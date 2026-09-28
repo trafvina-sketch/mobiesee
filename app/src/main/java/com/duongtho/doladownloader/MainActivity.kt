@@ -915,96 +915,116 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ⚡ Helper: Đọc file SKILL.md → base64 → JS tạo File → inject vào Dola
+    // ⚡ Helper: Đọc file SKILL.md → base64 → JS tạo File → gửi vào Dola
     private fun continueAttachSkill(skillFile: File, displayName: String) {
         Thread {
             try {
                 val content = skillFile.readText()
-                val base64Content = Base64.encodeToString(content.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+                val base64Content = android.util.Base64.encodeToString(content.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+
+                // Set pendingSkillFile phòng khi Chiến lược 3 trigger onShowFileChooser
+                try {
+                    val skillUri = androidx.core.content.FileProvider.getUriForFile(
+                        this, "$packageName.fileprovider", skillFile
+                    )
+                    pendingSkillFile = skillUri
+                } catch (_: Exception) {}
 
                 runOnUiThread {
-                    // JS: Decode base64 → tạo File object → inject vào Dola bằng injectFileIntoDola
                     val escapedName = displayName.replace("'", "\\'")
                     val js = """
                         (async function() {
                             try {
-                                // 1. Decode base64 → text content
                                 var b64 = '$base64Content';
                                 var raw = atob(b64);
                                 var bytes = new Uint8Array(raw.length);
                                 for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
                                 var blob = new Blob([bytes], { type: 'text/markdown' });
                                 var file = new File([blob], '$escapedName', { type: 'text/markdown', lastModified: Date.now() });
-                                console.log('[DuongTho] ✅ Tạo File object:', file.name, file.size, 'bytes');
+                                console.log('[DT] File:', file.name, file.size, 'bytes');
 
-                                // 2. Thử inject qua injectFileIntoDola (cùng cơ chế bypass ảnh)
-                                if (typeof injectFileIntoDola === 'function') {
-                                    var ok = await injectFileIntoDola(file);
-                                    if (ok) {
-                                        console.log('[DuongTho] ✅ File inject thành công qua injectFileIntoDola!');
-                                        if (window.__showChannaNotice) window.__showChannaNotice('⚡ Đã gửi file $escapedName vào Dola!', 3000);
-                                        return 'inject_ok';
-                                    }
+                                // ===== 1. DROP EVENT vào chat area =====
+                                var targets = [
+                                    document.querySelector('.tiptap'),
+                                    document.querySelector('.ProseMirror'),
+                                    document.querySelector('[contenteditable]'),
+                                    document.querySelector('#input-engine-container'),
+                                    document.querySelector('[role="textbox"]'),
+                                    document.querySelector('main'),
+                                    document.body
+                                ].filter(Boolean);
+
+                                for (var t = 0; t < targets.length; t++) {
+                                    try {
+                                        var dt = new DataTransfer();
+                                        dt.items.add(file);
+                                        targets[t].dispatchEvent(new DragEvent('dragenter', {bubbles:true,cancelable:true,dataTransfer:dt}));
+                                        targets[t].dispatchEvent(new DragEvent('dragover', {bubbles:true,cancelable:true,dataTransfer:dt}));
+                                        targets[t].dispatchEvent(new DragEvent('drop', {bubbles:true,cancelable:true,dataTransfer:dt}));
+                                    } catch(de) {}
                                 }
-
-                                // 3. Fallback: Tìm input[type=file] bất kỳ → DataTransfer inject
-                                var fileInput = document.querySelector('input[type="file"]');
-                                if (!fileInput) {
-                                    // Tìm tất cả buttons, click nút nhỏ nhất ở dưới cùng (nút +)
-                                    var allBtns = Array.from(document.querySelectorAll('button, [role="button"]'));
-                                    // Lọc nút ở phần dưới viewport
-                                    var bottomBtns = allBtns.filter(function(b) {
-                                        var r = b.getBoundingClientRect();
-                                        return r.bottom > window.innerHeight * 0.8 && r.width < 60 && r.height < 60;
-                                    }).sort(function(a, b) { return a.getBoundingClientRect().left - b.getBoundingClientRect().left; });
-                                    
-                                    if (bottomBtns.length > 0) {
-                                        var origSP = HTMLInputElement.prototype.showPicker;
-                                        HTMLInputElement.prototype.showPicker = function() { return; };
-                                        bottomBtns[0].click();
-                                        console.log('[DuongTho] Click nút đầu tiên ở dưới cùng');
-                                        await new Promise(function(r) { setTimeout(r, 500); });
-                                        
-                                        // Tìm "Tải tập tin" trong menu
-                                        var menuItems = document.querySelectorAll('button, div, li, a, span, [role="menuitem"]');
-                                        for (var m = 0; m < menuItems.length; m++) {
-                                            var txt = (menuItems[m].textContent || '').trim();
-                                            if (txt.indexOf('Tải tập tin') >= 0 || txt.indexOf('Upload file') >= 0) {
-                                                menuItems[m].click();
-                                                console.log('[DuongTho] Click "Tải tập tin"');
-                                                await new Promise(function(r) { setTimeout(r, 400); });
-                                                break;
-                                            }
-                                        }
-                                        HTMLInputElement.prototype.showPicker = origSP;
-                                        fileInput = document.querySelector('input[type="file"]');
-                                    }
-                                }
-
-                                if (fileInput) {
-                                    var dt = new DataTransfer();
-                                    dt.items.add(file);
-                                    var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files');
-                                    if (desc && desc.set) { desc.set.call(fileInput, dt.files); }
-                                    else { fileInput.files = dt.files; }
-                                    fileInput.dispatchEvent(new Event('input', { bubbles: true }));
-                                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                                    await new Promise(function(r) { setTimeout(r, 500); });
-                                    console.log('[DuongTho] ✅ File inject qua DataTransfer!');
-                                    if (window.__showChannaNotice) window.__showChannaNotice('⚡ Đã gửi file $escapedName!', 3000);
+                                await new Promise(function(r){setTimeout(r,800)});
+                                
+                                // Check nếu có file input xuất hiện (Dola có thể listen drop)
+                                var fi = document.querySelector('input[type="file"]');
+                                if (fi) {
+                                    var dt2 = new DataTransfer(); dt2.items.add(file);
+                                    var d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'files');
+                                    if(d&&d.set)d.set.call(fi,dt2.files); else fi.files=dt2.files;
+                                    fi.dispatchEvent(new Event('input',{bubbles:true}));
+                                    fi.dispatchEvent(new Event('change',{bubbles:true}));
+                                    console.log('[DT] ✅ DataTransfer OK!');
+                                    if(window.__showChannaNotice) window.__showChannaNotice('⚡ File $escapedName đã gửi!',3000);
                                     return 'dt_ok';
                                 }
 
-                                console.warn('[DuongTho] Không tìm thấy file input');
-                                return 'no_input';
+                                // ===== 2. Click nút + (vị trí dưới cùng bên trái) =====
+                                var allBtns = Array.from(document.querySelectorAll('button,[role="button"]'));
+                                var bots = allBtns.filter(function(b){
+                                    var r=b.getBoundingClientRect();
+                                    return r.top>window.innerHeight*0.7 && r.width<80 && r.height<80;
+                                }).sort(function(a,b){return a.getBoundingClientRect().left-b.getBoundingClientRect().left});
+                                
+                                console.log('[DT] Bottom buttons:', bots.length);
+                                if (bots.length > 0) {
+                                    bots[0].click();
+                                    console.log('[DT] Click btn left:', bots[0].getBoundingClientRect().left.toFixed(0));
+                                    await new Promise(function(r){setTimeout(r,600)});
+                                    
+                                    // Tìm "Tải tập tin"
+                                    var items = document.querySelectorAll('*');
+                                    for (var k=0; k<items.length; k++) {
+                                        var el=items[k], tx=(el.textContent||'').trim();
+                                        if (el.children.length<=3 && tx.indexOf('Tải tập tin')>=0) {
+                                            el.click();
+                                            console.log('[DT] ✅ Click Tải tập tin → onShowFileChooser');
+                                            if(window.__showChannaNotice) window.__showChannaNotice('⚡ Đang gửi file...',3000);
+                                            return 'upload_click';
+                                        }
+                                    }
+                                    
+                                    // Đóng menu nếu mở
+                                    document.body.click();
+                                    await new Promise(function(r){setTimeout(r,200)});
+                                }
+
+                                // ===== 3. Tạo hidden input → trigger onShowFileChooser =====
+                                var hi = document.createElement('input');
+                                hi.type='file'; hi.accept='*/*';
+                                hi.style.cssText='position:fixed;left:-9999px;opacity:0';
+                                document.body.appendChild(hi);
+                                hi.click();
+                                console.log('[DT] Hidden input click → onShowFileChooser');
+                                if(window.__showChannaNotice) window.__showChannaNotice('⚡ Đang gửi file $escapedName...',3000);
+                                return 'hidden_input';
                             } catch(e) {
-                                console.error('[DuongTho] Lỗi inject file:', e);
-                                return 'error: ' + e.message;
+                                console.error('[DT]', e);
+                                return 'error:'+e.message;
                             }
                         })();
                     """.trimIndent()
                     webView.evaluateJavascript(js) { result ->
-                        android.util.Log.d("DuongTho", "Skill file inject: $result for $displayName")
+                        android.util.Log.d("DuongTho", "Skill: $result for $displayName")
                     }
                     Toast.makeText(this, "⚡ Đang gửi file $displayName...", Toast.LENGTH_SHORT).show()
                 }
