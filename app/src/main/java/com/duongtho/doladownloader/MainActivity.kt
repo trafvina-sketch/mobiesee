@@ -731,37 +731,16 @@ class MainActivity : AppCompatActivity() {
         val btnQuickSkill30s = dialogView.findViewById<MaterialButton>(R.id.btnQuickSkill30s)
         btnQuickSkill30s?.setOnClickListener {
             dialog.dismiss()
-            // Gắn file SKILL.md thật vào chat Dola
-            try {
-                val cacheDir = File(cacheDir, "skills")
-                cacheDir.mkdirs()
-                val skillFile = File(cacheDir, "DuongTho-30s-SKILL.md")
-                val inputStream = assets.open("skill_30s.md")
-                skillFile.writeText(inputStream.bufferedReader().use { it.readText() })
-                inputStream.close()
-                continueAttachSkill(skillFile, "DuongTho-30s-SKILL.md")
-            } catch (e: Exception) {
-                // Fallback: paste text
-                webView.evaluateJavascript("window.duongThoInsertSkill && window.duongThoInsertSkill('30s');", null)
-                Toast.makeText(this, "⚡ Đã chèn Auto Skill 30s vào khung chat!", Toast.LENGTH_SHORT).show()
-            }
+            // Gắn file SKILL.md vào chat Dola (giống bypass ảnh)
+            webView.evaluateJavascript("window.duongThoAttachSkillFile && window.duongThoAttachSkillFile('30s');", null)
+            Toast.makeText(this, "⚡ Đang gắn file SKILL 30s...", Toast.LENGTH_SHORT).show()
         }
 
         val btnQuickSkill1015s = dialogView.findViewById<MaterialButton>(R.id.btnQuickSkill1015s)
         btnQuickSkill1015s?.setOnClickListener {
             dialog.dismiss()
-            try {
-                val cacheDir = File(cacheDir, "skills")
-                cacheDir.mkdirs()
-                val skillFile = File(cacheDir, "DuongTho-10s-15s-SKILL.md")
-                val inputStream = assets.open("skill_10_15s.md")
-                skillFile.writeText(inputStream.bufferedReader().use { it.readText() })
-                inputStream.close()
-                continueAttachSkill(skillFile, "DuongTho-10s-15s-SKILL.md")
-            } catch (e: Exception) {
-                webView.evaluateJavascript("window.duongThoInsertSkill && window.duongThoInsertSkill('10-15s');", null)
-                Toast.makeText(this, "⚡ Đã chèn Auto Skill 10-15s vào khung chat!", Toast.LENGTH_SHORT).show()
-            }
+            webView.evaluateJavascript("window.duongThoAttachSkillFile && window.duongThoAttachSkillFile('10-15s');", null)
+            Toast.makeText(this, "⚡ Đang gắn file SKILL 10-15s...", Toast.LENGTH_SHORT).show()
         }
 
         val switchAutoScan = dialogView.findViewById<SwitchMaterial>(R.id.switchAutoScan)

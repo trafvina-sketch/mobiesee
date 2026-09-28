@@ -6082,6 +6082,117 @@ During autopilot, the ONLY things the user should see in chat are: NotifyHuman v
     }
   };
 
+  // ⚡ GẮN FILE SKILL.MD VÀO DOLA CHAT (dạng file upload, giống bypass ảnh)
+  window.duongThoAttachSkillFile = async function(type) {
+    const modeName = (type === '30s' || type === '30') ? '30s' : '10-15s';
+    const fileName = (type === '30s' || type === '30') ? 'DuongTho-30s-SKILL.md' : 'DuongTho-10s-15s-SKILL.md';
+    const content = (type === '30s' || type === '30') ? SKILL_30S_DIRECTIVE : SKILL_10_15S_DIRECTIVE;
+    console.log('[DuongTho] Đang gắn file Skill ' + modeName + ': ' + fileName);
+
+    try {
+      // Tạo File object từ nội dung SKILL.md
+      const blob = new Blob([content], { type: 'text/markdown' });
+      const file = new File([blob], fileName, { type: 'text/markdown', lastModified: Date.now() });
+
+      // Dùng đúng cơ chế injectFileIntoDola giống bypass ảnh
+      if (typeof injectFileIntoDola === 'function') {
+        const injected = await injectFileIntoDola(file);
+        if (injected) {
+          console.log('[DuongTho] ✅ Gắn file SKILL.md thành công qua injectFileIntoDola!');
+          if (window.__showChannaNotice) {
+            window.__showChannaNotice('⚡ Đã gắn file ' + fileName + ' vào Dola!', 3000);
+          }
+          return true;
+        }
+      }
+
+      // Fallback 1: Dùng findComposerTarget + findBestImageInput (deep surface finder)
+      if (typeof findComposerTarget === 'function') {
+        const target = findComposerTarget();
+        if (target) {
+          const surface = (typeof findComposerSurface === 'function' ? findComposerSurface(target) : null) || target;
+          const existingInput = (typeof findBestImageInput === 'function') ? findBestImageInput(surface, target) : null;
+          if (existingInput) {
+            if (typeof assignFileOnce === 'function') {
+              assignFileOnce(existingInput, file);
+              console.log('[DuongTho] ✅ Gắn file SKILL.md qua existing input');
+              return true;
+            }
+          }
+          // Kích hoạt nút + để mở file input
+          if (typeof silentlyActivateAndAssign === 'function') {
+            await silentlyActivateAndAssign(file, surface, target);
+            console.log('[DuongTho] ✅ Gắn file SKILL.md qua silentlyActivateAndAssign');
+            return true;
+          }
+        }
+      }
+
+      // Fallback 2: Tìm input[type=file] và inject trực tiếp
+      let fileInput = document.querySelector('input[type="file"]');
+      if (!fileInput) {
+        // Click nút + để Dola render ra file input
+        const plusButton = Array.from(document.querySelectorAll('button, div[role="button"]')).find(btn => {
+          const text = (btn.textContent || '').trim();
+          const aria = btn.getAttribute('aria-label') || '';
+          return text === '+' || aria.includes('Upload') || aria.includes('image') || aria.includes('Add');
+        });
+        if (plusButton) {
+          const origShowPicker = HTMLInputElement.prototype.showPicker;
+          HTMLInputElement.prototype.showPicker = function() { return; };
+          plusButton.click();
+          await new Promise(resolve => setTimeout(resolve, 300));
+          HTMLInputElement.prototype.showPicker = origShowPicker;
+
+          // Tìm nút "Tải tập tin hoặc hình ảnh lên" trong popup menu
+          const uploadOption = Array.from(document.querySelectorAll('button, div[role="menuitem"], li, a, span')).find(el => {
+            const text = (el.textContent || '').trim();
+            return text.includes('Tải tập tin') || text.includes('Upload') || text.includes('tập tin hoặc hình ảnh');
+          });
+          if (uploadOption) {
+            uploadOption.click();
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+
+          fileInput = document.querySelector('input[type="file"]');
+        }
+      }
+
+      if (fileInput) {
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files');
+        if (descriptor && descriptor.set) {
+          descriptor.set.call(fileInput, dataTransfer.files);
+        } else {
+          fileInput.files = dataTransfer.files;
+        }
+        fileInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        fileInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log('[DuongTho] ✅ Gắn file SKILL.md qua direct file input inject');
+        if (window.__showChannaNotice) {
+          window.__showChannaNotice('⚡ Đã gắn file ' + fileName + ' vào Dola!', 3000);
+        }
+        return true;
+      }
+
+      // Fallback cuối: paste text
+      console.warn('[DuongTho] ⚠️ Không tìm được file input, fallback paste text');
+      if (typeof window.duongThoInsertSkill === 'function') {
+        window.duongThoInsertSkill(type);
+      }
+      return false;
+    } catch(e) {
+      console.error('[DuongTho] Lỗi gắn file SKILL.md:', e);
+      // Fallback paste text
+      if (typeof window.duongThoInsertSkill === 'function') {
+        window.duongThoInsertSkill(type);
+      }
+      return false;
+    }
+  };
+
   // ============================================================================
   // 🎨 DOLA EXTENSION THEME ENGINE & SMART FLOATING TOOLBAR
   // ============================================================================
@@ -6541,36 +6652,31 @@ During autopilot, the ONLY things the user should see in chat are: NotifyHuman v
           };
         }
 
-        // Bấm chọn Skill 30s → Gắn file SKILL.md thật vào chat
+        // Bấm chọn Skill 30s → Gắn file SKILL.md vào chat (giống bypass ảnh)
         const btn30s = popup.querySelector('#dola-choose-skill-30s');
         if (btn30s) {
           btn30s.onclick = (ev) => {
             ev.stopPropagation();
-            // Ưu tiên gắn file .md qua Android bridge
-            if (window.AndroidDuongTho && typeof window.AndroidDuongTho.attachSkillFile === 'function') {
-              window.AndroidDuongTho.attachSkillFile('30s');
-            } else if (window.DuongThoAndroid && typeof window.DuongThoAndroid.attachSkillFile === 'function') {
-              window.DuongThoAndroid.attachSkillFile('30s');
-            } else if (typeof window.duongThoInsertSkill === 'function') {
-              window.duongThoInsertSkill('30s'); // Fallback paste text
-            }
             popup.remove();
+            if (typeof window.duongThoAttachSkillFile === 'function') {
+              window.duongThoAttachSkillFile('30s');
+            } else if (typeof window.duongThoInsertSkill === 'function') {
+              window.duongThoInsertSkill('30s');
+            }
           };
         }
 
-        // Bấm chọn Skill 10-15s → Gắn file SKILL.md thật vào chat
+        // Bấm chọn Skill 10-15s → Gắn file SKILL.md vào chat (giống bypass ảnh)
         const btn1015s = popup.querySelector('#dola-choose-skill-1015s');
         if (btn1015s) {
           btn1015s.onclick = (ev) => {
             ev.stopPropagation();
-            if (window.AndroidDuongTho && typeof window.AndroidDuongTho.attachSkillFile === 'function') {
-              window.AndroidDuongTho.attachSkillFile('10-15s');
-            } else if (window.DuongThoAndroid && typeof window.DuongThoAndroid.attachSkillFile === 'function') {
-              window.DuongThoAndroid.attachSkillFile('10-15s');
-            } else if (typeof window.duongThoInsertSkill === 'function') {
-              window.duongThoInsertSkill('10-15s'); // Fallback paste text
-            }
             popup.remove();
+            if (typeof window.duongThoAttachSkillFile === 'function') {
+              window.duongThoAttachSkillFile('10-15s');
+            } else if (typeof window.duongThoInsertSkill === 'function') {
+              window.duongThoInsertSkill('10-15s');
+            }
           };
         }
 
