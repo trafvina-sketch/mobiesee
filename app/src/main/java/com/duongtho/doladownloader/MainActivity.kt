@@ -915,92 +915,107 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ⚡ Helper: Set pendingSkillFile + Click nút "+" → "Tải tập tin" của Dola
+    // ⚡ Helper: Đọc file SKILL.md → base64 → JS tạo File → inject vào Dola
     private fun continueAttachSkill(skillFile: File, displayName: String) {
-        runOnUiThread {
+        Thread {
             try {
-                // 1. Tạo URI từ FileProvider
-                val skillUri = androidx.core.content.FileProvider.getUriForFile(
-                    this, "$packageName.fileprovider", skillFile
-                )
-                pendingSkillFile = skillUri
+                val content = skillFile.readText()
+                val base64Content = Base64.encodeToString(content.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
 
-                // 2. Click nút "+" rồi "Tải tập tin hoặc hình ảnh lên" trong Dola
-                val js = """
-                    (async function() {
-                        try {
-                            // Tìm nút "+" ở dưới cùng của Dola chat
-                            var plusBtn = null;
-                            var allBtns = document.querySelectorAll('button, div[role="button"]');
-                            for (var i = 0; i < allBtns.length; i++) {
-                                var b = allBtns[i];
-                                var t = (b.textContent || '').trim();
-                                if (t === '+' || t === '＋') { plusBtn = b; break; }
-                            }
-                            if (!plusBtn) {
-                                // Tìm nút + gần khu vực input-engine
-                                var container = document.querySelector('#input-engine-container, .chat-input-container, [class*="composer"]');
-                                if (container) {
-                                    var btns = container.querySelectorAll('button');
-                                    for (var j = 0; j < btns.length; j++) {
-                                        var svg = btns[j].querySelector('svg');
-                                        var text = (btns[j].textContent || '').trim();
-                                        if (text === '+' || (svg && text.length <= 2)) {
-                                            plusBtn = btns[j];
-                                            break;
+                runOnUiThread {
+                    // JS: Decode base64 → tạo File object → inject vào Dola bằng injectFileIntoDola
+                    val escapedName = displayName.replace("'", "\\'")
+                    val js = """
+                        (async function() {
+                            try {
+                                // 1. Decode base64 → text content
+                                var b64 = '$base64Content';
+                                var raw = atob(b64);
+                                var bytes = new Uint8Array(raw.length);
+                                for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+                                var blob = new Blob([bytes], { type: 'text/markdown' });
+                                var file = new File([blob], '$escapedName', { type: 'text/markdown', lastModified: Date.now() });
+                                console.log('[DuongTho] ✅ Tạo File object:', file.name, file.size, 'bytes');
+
+                                // 2. Thử inject qua injectFileIntoDola (cùng cơ chế bypass ảnh)
+                                if (typeof injectFileIntoDola === 'function') {
+                                    var ok = await injectFileIntoDola(file);
+                                    if (ok) {
+                                        console.log('[DuongTho] ✅ File inject thành công qua injectFileIntoDola!');
+                                        if (window.__showChannaNotice) window.__showChannaNotice('⚡ Đã gửi file $escapedName vào Dola!', 3000);
+                                        return 'inject_ok';
+                                    }
+                                }
+
+                                // 3. Fallback: Tìm input[type=file] bất kỳ → DataTransfer inject
+                                var fileInput = document.querySelector('input[type="file"]');
+                                if (!fileInput) {
+                                    // Tìm tất cả buttons, click nút nhỏ nhất ở dưới cùng (nút +)
+                                    var allBtns = Array.from(document.querySelectorAll('button, [role="button"]'));
+                                    // Lọc nút ở phần dưới viewport
+                                    var bottomBtns = allBtns.filter(function(b) {
+                                        var r = b.getBoundingClientRect();
+                                        return r.bottom > window.innerHeight * 0.8 && r.width < 60 && r.height < 60;
+                                    }).sort(function(a, b) { return a.getBoundingClientRect().left - b.getBoundingClientRect().left; });
+                                    
+                                    if (bottomBtns.length > 0) {
+                                        var origSP = HTMLInputElement.prototype.showPicker;
+                                        HTMLInputElement.prototype.showPicker = function() { return; };
+                                        bottomBtns[0].click();
+                                        console.log('[DuongTho] Click nút đầu tiên ở dưới cùng');
+                                        await new Promise(function(r) { setTimeout(r, 500); });
+                                        
+                                        // Tìm "Tải tập tin" trong menu
+                                        var menuItems = document.querySelectorAll('button, div, li, a, span, [role="menuitem"]');
+                                        for (var m = 0; m < menuItems.length; m++) {
+                                            var txt = (menuItems[m].textContent || '').trim();
+                                            if (txt.indexOf('Tải tập tin') >= 0 || txt.indexOf('Upload file') >= 0) {
+                                                menuItems[m].click();
+                                                console.log('[DuongTho] Click "Tải tập tin"');
+                                                await new Promise(function(r) { setTimeout(r, 400); });
+                                                break;
+                                            }
                                         }
+                                        HTMLInputElement.prototype.showPicker = origSP;
+                                        fileInput = document.querySelector('input[type="file"]');
                                     }
                                 }
-                            }
-                            
-                            if (plusBtn) {
-                                plusBtn.click();
-                                console.log('[DuongTho] ✅ Đã click nút +');
-                                await new Promise(r => setTimeout(r, 500));
-                                
-                                // Tìm "Tải tập tin hoặc hình ảnh lên" trong popup menu
-                                var allEls = document.querySelectorAll('button, div, li, a, span, p, [role="menuitem"], [role="option"]');
-                                var uploadItem = null;
-                                for (var k = 0; k < allEls.length; k++) {
-                                    var el = allEls[k];
-                                    var txt = (el.textContent || '').trim();
-                                    if (txt.indexOf('Tải tập tin') >= 0 || txt.indexOf('Upload file') >= 0 || txt.indexOf('tập tin hoặc hình ảnh') >= 0) {
-                                        uploadItem = el;
-                                        break;
-                                    }
-                                }
-                                if (uploadItem) {
-                                    uploadItem.click();
-                                    console.log('[DuongTho] ✅ Đã click "Tải tập tin hoặc hình ảnh lên"');
-                                    return 'clicked_upload';
-                                } else {
-                                    // Fallback: tìm input[type=file] sau khi mở menu
-                                    var fi = document.querySelector('input[type="file"]');
-                                    if (fi) { fi.click(); return 'clicked_file_input'; }
-                                    console.warn('[DuongTho] Không tìm thấy mục Tải tập tin');
-                                    return 'upload_not_found';
-                                }
-                            } else {
-                                console.warn('[DuongTho] Không tìm thấy nút +');
-                                return 'plus_not_found';
-                            }
-                        } catch(e) {
-                            console.error('[DuongTho] Lỗi:', e);
-                            return 'error';
-                        }
-                    })();
-                """.trimIndent()
-                webView.evaluateJavascript(js) { result ->
-                    android.util.Log.d("DuongTho", "Skill upload trigger: $result for $displayName")
-                }
 
-                Toast.makeText(this, "⚡ Đang gửi file $displayName...", Toast.LENGTH_SHORT).show()
+                                if (fileInput) {
+                                    var dt = new DataTransfer();
+                                    dt.items.add(file);
+                                    var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files');
+                                    if (desc && desc.set) { desc.set.call(fileInput, dt.files); }
+                                    else { fileInput.files = dt.files; }
+                                    fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+                                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                                    await new Promise(function(r) { setTimeout(r, 500); });
+                                    console.log('[DuongTho] ✅ File inject qua DataTransfer!');
+                                    if (window.__showChannaNotice) window.__showChannaNotice('⚡ Đã gửi file $escapedName!', 3000);
+                                    return 'dt_ok';
+                                }
+
+                                console.warn('[DuongTho] Không tìm thấy file input');
+                                return 'no_input';
+                            } catch(e) {
+                                console.error('[DuongTho] Lỗi inject file:', e);
+                                return 'error: ' + e.message;
+                            }
+                        })();
+                    """.trimIndent()
+                    webView.evaluateJavascript(js) { result ->
+                        android.util.Log.d("DuongTho", "Skill file inject: $result for $displayName")
+                    }
+                    Toast.makeText(this, "⚡ Đang gửi file $displayName...", Toast.LENGTH_SHORT).show()
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
-                pendingSkillFile = null
-                Toast.makeText(this, "⚠️ Lỗi: ${e.message}", Toast.LENGTH_SHORT).show()
+                runOnUiThread {
+                    pendingSkillFile = null
+                    Toast.makeText(this, "⚠️ Lỗi: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
-        }
+        }.start()
     }
 
     inner class DuongThoBridge {
