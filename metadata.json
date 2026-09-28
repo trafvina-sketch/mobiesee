@@ -1,0 +1,6 @@
+{
+  "name": "Dola Downloader",
+  "description": "Video downloader and browser utility for Dola media.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

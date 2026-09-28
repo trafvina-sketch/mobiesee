@@ -100,6 +100,85 @@
         </LinearLayout>
 
         <!-- ============================================== -->
+        <!-- PHONG CÁCH GIAO DIỆN EXTENSION (THEME CHOOSER) -->
+        <!-- ============================================== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="#152136"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="🎨 PHONG CÁCH EXTENSION"
+                android:textColor="#c084fc"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <!-- Nút chọn Chuẩn Dola -->
+            <TextView
+                android:id="@+id/btnThemeNativeDola"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/btn_gradient"
+                android:clickable="true"
+                android:focusable="true"
+                android:paddingStart="8dp"
+                android:paddingTop="4dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="4dp"
+                android:text="Chuẩn Dola"
+                android:textColor="#ffffff"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <View
+                android:layout_width="6dp"
+                android:layout_height="1dp" />
+
+            <!-- Nút chọn Tùy Biến Pro -->
+            <TextView
+                android:id="@+id/btnThemeCustomPro"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="#1e293b"
+                android:clickable="true"
+                android:focusable="true"
+                android:paddingStart="8dp"
+                android:paddingTop="4dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="4dp"
+                android:text="Tùy Biến Pro"
+                android:textColor="#94a3b8"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- NÚT TẢI ẢNH THAM CHIẾU TỪ ĐIỆN THOẠI -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnQuickUploadImage"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginTop="10dp"
+            android:backgroundTint="#0284c7"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:text="📸 Tải ảnh tham chiếu (Thư viện / Tệp máy)"
+            android:textColor="#ffffff"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            app:cornerRadius="8dp"
+            app:icon="@android:drawable/ic_menu_gallery"
+            app:iconGravity="textStart"
+            app:iconSize="18dp"
+            app:iconTint="#ffffff" />
+
+        <!-- ============================================== -->
         <!-- MỤC 1: STUDIO TẠO VIDEO 15S - 20S - 30S (FAST) -->
         <!-- ============================================== -->
         <LinearLayout

@@ -1,0 +1,6 @@
+{
+  "summary":  "Kế hoạch tích hợp hệ thống xác thực bản quyền RSA License (ActivationActivity & License manager) vào ứng dụng Dola Downloader.\nBao gồm:\n- Tạo License.kt xử lý SHA256withRSA, lưu trữ SharedPreferences bảo mật.\n- Tạo ActivationActivity với giao diện Dark Neon hiện đại, hiển thị Device ID, nút copy 1 chạm và ô nhập key kích hoạt.\n- Cấu hình điều hướng bảo vệ MainActivity và cập nhật AndroidManifest.xml.",
+  "updatedAt":  "2026-09-28T06:53:01.526931844Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

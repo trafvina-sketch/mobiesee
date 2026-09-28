@@ -31,9 +31,13 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.switchmaterial.SwitchMaterial
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -104,6 +108,8 @@ class MainActivity : AppCompatActivity() {
             }
             if (uris.isNotEmpty()) {
                 processSelectedImagesToJs(uris)
+            } else {
+                Toast.makeText(this, "Chưa chọn ảnh nào", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -113,52 +119,153 @@ class MainActivity : AppCompatActivity() {
             try {
                 val jsonArray = JSONArray()
                 for (uri in uris) {
-                    contentResolver.openInputStream(uri)?.use { inputStream ->
-                        val bytes = inputStream.readBytes()
-                        val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                        val mimeType = contentResolver.getType(uri) ?: "image/png"
-                        var fileName = "ref_${System.currentTimeMillis()}.png"
-
-                        val cursor = contentResolver.query(uri, null, null, null, null)
-                        cursor?.use {
-                            if (it.moveToFirst()) {
-                                val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    var fileName = "ref_${System.currentTimeMillis()}.jpg"
+                    try {
+                        contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                                 if (nameIndex != -1) {
-                                    val name = it.getString(nameIndex)
+                                    val name = cursor.getString(nameIndex)
                                     if (!name.isNullOrEmpty()) fileName = name
                                 }
                             }
                         }
-
-                        val dataUrl = "data:$mimeType;base64,$base64"
-                        val obj = JSONObject().apply {
-                            put("id", "ref_" + System.currentTimeMillis() + "_" + (1000..9999).random())
-                            put("name", fileName)
-                            put("type", mimeType)
-                            put("size", bytes.size)
-                            put("dataUrl", dataUrl)
-                            put("addedAt", System.currentTimeMillis())
-                        }
-                        jsonArray.put(obj)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
+
+                    // Tối ưu hóa kích thước ảnh an toàn để tránh tràn bộ đệm Binder / evaluateJavascript
+                    var bitmap: Bitmap? = null
+                    try {
+                        contentResolver.openInputStream(uri)?.use { inputStream ->
+                            bitmap = BitmapFactory.decodeStream(inputStream)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+
+                    val base64: String
+                    val mimeType: String
+                    val byteSize: Int
+
+                    if (bitmap != null) {
+                        val maxDim = 1920
+                        val width = bitmap!!.width
+                        val height = bitmap!!.height
+                        val scaledBitmap = if (width > maxDim || height > maxDim) {
+                            val ratio = minOf(maxDim.toFloat() / width, maxDim.toFloat() / height)
+                            val targetW = (width * ratio).toInt()
+                            val targetH = (height * ratio).toInt()
+                            Bitmap.createScaledBitmap(bitmap!!, targetW, targetH, true)
+                        } else {
+                            bitmap!!
+                        }
+
+                        val outputStream = ByteArrayOutputStream()
+                        val isPng = fileName.endsWith(".png", true)
+                        val format = if (isPng) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+                        scaledBitmap.compress(format, 90, outputStream)
+                        val bytes = outputStream.toByteArray()
+                        byteSize = bytes.size
+                        base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                        mimeType = if (isPng) "image/png" else "image/jpeg"
+                    } else {
+                        val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: continue
+                        byteSize = bytes.size
+                        base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                        mimeType = contentResolver.getType(uri) ?: "image/jpeg"
+                    }
+
+                    val dataUrl = "data:$mimeType;base64,$base64"
+                    val obj = JSONObject().apply {
+                        put("id", "ref_" + System.currentTimeMillis() + "_" + (1000..9999).random())
+                        put("name", fileName)
+                        put("type", mimeType)
+                        put("size", byteSize)
+                        put("dataUrl", dataUrl)
+                        put("addedAt", System.currentTimeMillis())
+                    }
+                    jsonArray.put(obj)
                 }
+
+                if (jsonArray.length() == 0) return@Thread
 
                 val jsonString = jsonArray.toString()
                 runOnUiThread {
-                    val script = "window.__duongThoAddImagesFromNative && window.__duongThoAddImagesFromNative($jsonString);"
+                    val script = """
+                        (function() {
+                            try {
+                                const imgs = $jsonString;
+                                if (typeof window.__duongThoAddImagesFromNative === 'function') {
+                                    window.__duongThoAddImagesFromNative(imgs);
+                                } else if (typeof window.duongThoAttachReferenceImage === 'function' && imgs.length > 0) {
+                                    window.duongThoAttachReferenceImage(imgs[0].dataUrl, imgs[0].name);
+                                }
+                            } catch(e) {
+                                console.error('Error passing images to JS:', e);
+                            }
+                        })();
+                    """.trimIndent()
                     webView.evaluateJavascript(script, null)
+                    Toast.makeText(this@MainActivity, "Đã chọn ${jsonArray.length()} ảnh thành công!", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 runOnUiThread {
-                    Toast.makeText(this@MainActivity, "Lỗi đọc ảnh: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Lỗi đọc ảnh từ thiết bị: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
     }
 
+    fun launchUniversalImagePicker() {
+        try {
+            val getContentIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                type = "image/*"
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                addCategory(Intent.CATEGORY_OPENABLE)
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/jpeg", "image/png", "image/webp", "image/gif", "image/*"))
+            }
+            val pickIntent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply {
+                type = "image/*"
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            }
+            val openDocIntent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                type = "image/*"
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                addCategory(Intent.CATEGORY_OPENABLE)
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/jpeg", "image/png", "image/webp", "image/gif", "image/*"))
+            }
+
+            val chooser = Intent.createChooser(getContentIntent, "Chọn ảnh từ máy (Thư viện / Tệp / Photos)").apply {
+                putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(pickIntent, openDocIntent))
+            }
+            nativeImagePickerLauncher.launch(chooser)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            try {
+                val fallback = Intent(Intent.ACTION_GET_CONTENT).apply {
+                    type = "image/*"
+                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                }
+                nativeImagePickerLauncher.launch(fallback)
+            } catch (ex: Exception) {
+                Toast.makeText(this@MainActivity, "Không thể mở bộ chọn ảnh: ${ex.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Kiểm tra bản quyền kích hoạt thiết bị
+        if (!License.isActivated(this)) {
+            startActivity(Intent(this, ActivationActivity::class.java))
+            finish()
+            return
+        }
+
         setContentView(R.layout.activity_main)
 
         prefs = getSharedPreferences("DuongThoDolaPrefs", Context.MODE_PRIVATE)
@@ -173,6 +280,8 @@ class MainActivity : AppCompatActivity() {
         checkPermissions()
         setupWebView()
         setupDraggableBubble()
+        val savedTheme = prefs.getString("extension_theme", "native") ?: "native"
+        updateBubbleTheme(savedTheme)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -245,8 +354,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun sanitizeWebViewCache() {
+        try {
+            // Đảm bảo các thư mục Code Cache của Chromium tồn tại để tránh lỗi simple_file_enumerator
+            val wasmDir = File(cacheDir, "WebView/Default/HTTP Cache/Code Cache/wasm")
+            if (!wasmDir.exists()) {
+                wasmDir.mkdirs()
+            }
+            val jsDir = File(cacheDir, "WebView/Default/HTTP Cache/Code Cache/js")
+            if (!jsDir.exists()) {
+                jsDir.mkdirs()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
+        sanitizeWebViewCache()
         val settings = webView.settings
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
@@ -258,6 +384,12 @@ class MainActivity : AppCompatActivity() {
         settings.setSupportZoom(true)
         settings.builtInZoomControls = true
         settings.displayZoomControls = false
+
+        try {
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        } catch (_: Exception) {
+            webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        }
 
         // 🛡️ CHẶN TOÀN BỘ HEADER 'X-Requested-With' ĐỂ GOOGLE OAUTH KHÔNG NHẬN DIỆN EMBEDDED WEBVIEW
         if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
@@ -361,6 +493,8 @@ class MainActivity : AppCompatActivity() {
                 val isGoogle = targetUrl.contains("accounts.google") || targetUrl.contains("google.com/o/oauth2") || targetUrl.contains("google.com/signin") || targetUrl.contains("accounts.youtube")
                 if (injectJsCode.isNotEmpty() && !isGoogle && (targetUrl.contains("dola.com") || targetUrl.contains("doubao.com"))) {
                     view?.evaluateJavascript(injectJsCode, null)
+                    val savedTheme = prefs.getString("extension_theme", "native") ?: "native"
+                    view?.evaluateJavascript("window.setDolaExtensionTheme && window.setDolaExtensionTheme('$savedTheme');", null)
                 }
                 CookieManager.getInstance().flush()
             }
@@ -394,23 +528,38 @@ class MainActivity : AppCompatActivity() {
                 fileUploadCallback?.onReceiveValue(null)
                 fileUploadCallback = filePathCallback
 
-                val intent = fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply {
-                    type = "image/*"
-                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                }
-                if (fileChooserParams != null && fileChooserParams.mode == FileChooserParams.MODE_OPEN_MULTIPLE) {
-                    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                }
-
                 try {
-                    fileChooserLauncher.launch(Intent.createChooser(intent, "Chọn ảnh từ thư viện hoặc tệp"))
+                    val intent = fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                        type = "image/*"
+                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                    }
+                    if (intent.type.isNullOrEmpty() || intent.type == "*/*") {
+                        intent.type = "image/*"
+                    }
+                    val pickIntent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply {
+                        type = "image/*"
+                    }
+                    val chooser = Intent.createChooser(intent, "Chọn ảnh từ điện thoại (Thư viện / Tệp / Photos)").apply {
+                        putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(pickIntent))
+                    }
+                    fileChooserLauncher.launch(chooser)
                     return true
                 } catch (e: Exception) {
-                    e.printStackTrace()
-                    fileUploadCallback?.onReceiveValue(null)
-                    fileUploadCallback = null
-                    return false
+                    try {
+                        val fallback = Intent(Intent.ACTION_GET_CONTENT).apply {
+                            type = "image/*"
+                            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                        }
+                        fileChooserLauncher.launch(Intent.createChooser(fallback, "Chọn ảnh"))
+                        return true
+                    } catch (ex: Exception) {
+                        ex.printStackTrace()
+                        fileUploadCallback?.onReceiveValue(null)
+                        fileUploadCallback = null
+                        return false
+                    }
                 }
             }
         }
@@ -462,6 +611,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateBubbleTheme(theme: String) {
+        if (theme == "custom") {
+            floatingBubble.setBackgroundResource(R.drawable.bg_bubble_custom)
+        } else {
+            floatingBubble.setBackgroundResource(R.drawable.bg_bubble_native)
+        }
+    }
+
     private fun showQuickMenuDialog() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_quick_menu, null)
         val dialog = AlertDialog.Builder(this)
@@ -476,6 +633,8 @@ class MainActivity : AppCompatActivity() {
         val dialogBtnReload = dialogView.findViewById<MaterialButton>(R.id.dialogBtnReload)
         val btnUiMobile = dialogView.findViewById<TextView>(R.id.btnUiMobile)
         val btnUiDesktop = dialogView.findViewById<TextView>(R.id.btnUiDesktop)
+        val btnThemeNativeDola = dialogView.findViewById<TextView>(R.id.btnThemeNativeDola)
+        val btnThemeCustomPro = dialogView.findViewById<TextView>(R.id.btnThemeCustomPro)
 
         var currentUiMode = prefs.getString("ui_mode", "mobile") ?: "mobile"
         fun updateUiModeButtons(mode: String) {
@@ -493,6 +652,43 @@ class MainActivity : AppCompatActivity() {
             }
         }
         updateUiModeButtons(currentUiMode)
+
+        var currentExtTheme = prefs.getString("extension_theme", "native") ?: "native"
+        fun updateThemeButtons(theme: String) {
+            currentExtTheme = theme
+            if (theme == "native") {
+                btnThemeNativeDola?.setBackgroundResource(R.drawable.btn_gradient)
+                btnThemeNativeDola?.setTextColor(Color.WHITE)
+                btnThemeCustomPro?.setBackgroundColor(Color.parseColor("#1e293b"))
+                btnThemeCustomPro?.setTextColor(Color.parseColor("#94a3b8"))
+            } else {
+                btnThemeCustomPro?.setBackgroundResource(R.drawable.btn_gradient)
+                btnThemeCustomPro?.setTextColor(Color.WHITE)
+                btnThemeNativeDola?.setBackgroundColor(Color.parseColor("#1e293b"))
+                btnThemeNativeDola?.setTextColor(Color.parseColor("#94a3b8"))
+            }
+        }
+        updateThemeButtons(currentExtTheme)
+
+        btnThemeNativeDola?.setOnClickListener {
+            if (currentExtTheme != "native") {
+                prefs.edit().putString("extension_theme", "native").apply()
+                updateThemeButtons("native")
+                updateBubbleTheme("native")
+                webView.evaluateJavascript("window.setDolaExtensionTheme && window.setDolaExtensionTheme('native');", null)
+                Toast.makeText(this, "🎨 Đã đổi sang giao diện Chuẩn Dola (Tối giản)", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        btnThemeCustomPro?.setOnClickListener {
+            if (currentExtTheme != "custom") {
+                prefs.edit().putString("extension_theme", "custom").apply()
+                updateThemeButtons("custom")
+                updateBubbleTheme("custom")
+                webView.evaluateJavascript("window.setDolaExtensionTheme && window.setDolaExtensionTheme('custom');", null)
+                Toast.makeText(this, "💎 Đã đổi sang giao diện Tùy Biến Pro Studio", Toast.LENGTH_SHORT).show()
+            }
+        }
 
         btnUiMobile?.setOnClickListener {
             if (currentUiMode != "mobile") {
@@ -514,6 +710,12 @@ class MainActivity : AppCompatActivity() {
                 webView.reload()
                 Toast.makeText(this, "💻 Đã chuyển sang Giao diện Web PC", Toast.LENGTH_SHORT).show()
             }
+        }
+
+        val btnQuickUploadImage = dialogView.findViewById<MaterialButton>(R.id.btnQuickUploadImage)
+        btnQuickUploadImage?.setOnClickListener {
+            dialog.dismiss()
+            launchUniversalImagePicker()
         }
 
         val switchAutoScan = dialogView.findViewById<SwitchMaterial>(R.id.switchAutoScan)
@@ -754,19 +956,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
+        fun onThemeChanged(theme: String) {
+            runOnUiThread {
+                prefs.edit().putString("extension_theme", theme).apply()
+                updateBubbleTheme(theme)
+                val themeName = if (theme == "custom") "Tùy Biến Pro Studio" else "Chuẩn Dola"
+                Toast.makeText(this@MainActivity, "🎨 Đã đổi giao diện: $themeName", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        @JavascriptInterface
+        fun getSavedTheme(): String {
+            return prefs.getString("extension_theme", "native") ?: "native"
+        }
+
+        @JavascriptInterface
         fun openNativeImagePicker() {
             runOnUiThread {
-                try {
-                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-                        type = "image/*"
-                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                    }
-                    nativeImagePickerLauncher.launch(Intent.createChooser(intent, "Chọn ảnh tham chiếu"))
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    Toast.makeText(this@MainActivity, "Không thể mở bộ chọn ảnh: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+                launchUniversalImagePicker()
             }
         }
 

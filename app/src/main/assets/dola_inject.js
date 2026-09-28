@@ -2527,1138 +2527,21 @@ if (typeof window !== 'undefined') {
   window.addEventListener('focus', syncMasterTopContainer, { passive: true });
 })();
 
-// --- 📐 SMART PROMPT DOCK, STEPPER & 1-CLICK PASTE ENGINE (ZERO OVERLAP) ---
+// --- 🧹 PROMPT DOCK REMOVED PER USER REQUEST (CLEAN EXTENSION) ---
 (() => {
   'use strict';
-
-  let localDockPrompts = [];
-  let dockSearchQuery = '';
-  let dockFilter = 'all'; // 'all' | 'queued' | 'done'
-  let activePromptIndex = 0;
-  let isQuickAddOpen = false;
-  let autoAdvanceEnabled = true;
-  let expandedCardIndices = new Set();
-
-  function escapeHtml(str) {
-    return String(str || '').replace(/[&<>"']/g, c => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[c]));
-  }
-
-  function getPromptText(item) {
-    if (!item) return '';
-    if (typeof item === 'string') return item.trim();
-    return String(item.prompt || item.text || item.content || item.value || '').trim();
-  }
-
-  function getPromptTitle(item, idx) {
-    const numStr = String(idx + 1).padStart(2, '0');
-    if (!item) return `Prompt #${numStr}`;
-    if (typeof item === 'string') return `Prompt #${numStr}`;
-    return item.title || item.name || `Prompt #${numStr}`;
-  }
-
-  function findDolaComposer() {
-    const selectors = [
-      '.tiptap.ProseMirror[contenteditable="true"]',
-      '.tiptap.ProseMirror',
-      '.ProseMirror[contenteditable="true"]',
-      'div[contenteditable="true"][role="textbox"]',
-      'div[contenteditable="true"]',
-      '.ProseMirror',
-      '[contenteditable="true"]',
-      'textarea[placeholder*="message" i]',
-      'textarea[placeholder*="prompt" i]',
-      'textarea[placeholder*="video" i]',
-      'textarea[placeholder*="describe" i]',
-      'textarea[placeholder*="chat" i]',
-      'textarea',
-      '.semi-input-textarea',
-      '[data-testid="chat-input"]',
-      'input[type="text"][placeholder*="message" i]'
-    ];
-    for (const sel of selectors) {
-      const el = document.querySelector(sel);
-      if (el && (el.offsetParent !== null || el.offsetHeight > 0 || (el.getClientRects && el.getClientRects().length > 0))) {
-        return el;
-      }
-    }
-    return document.querySelector('.tiptap.ProseMirror, .ProseMirror, textarea, div[contenteditable="true"]');
-  }
-
-  function injectPromptIntoDola(text, options = {}) {
-    if (!text || typeof text !== 'string') return false;
-    text = text.trim();
-    if (!text) return false;
-
-    if (!options?.skipDna && typeof window.__applyCharacterDna === 'function') {
-      text = window.__applyCharacterDna(text);
-    }
-
-    const composer = findDolaComposer();
-    if (!composer) {
-      console.warn('[Prompt Dock] Active composer element not found on page.');
-      return false;
-    }
-
+  function removePromptDockElements() {
     try {
-      try { composer.focus({ preventScroll: true }); } catch (e) { composer.focus(); }
-
-      // 1. Primary Native TipTap Command (Standard on Dola AI)
-      if (composer.editor && typeof composer.editor.commands?.setContent === 'function') {
-        composer.editor.commands.setContent(text);
-        if (typeof composer.editor.commands?.focus === 'function') {
-          try { composer.editor.commands.focus('end', { preventScroll: true }); } catch (e) { composer.editor.commands.focus('end'); }
-        }
-        composer.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-        composer.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-        return true;
+      const ids = ['channa-prompt-dock', 'channa-dock-toggle-btn', 'channa-workflow-hud'];
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el) el.remove();
       }
-
-      // 2. TipTap insertContent Fallback
-      if (composer.editor && typeof composer.editor.commands?.insertContent === 'function') {
-        composer.editor.commands.insertContent(text);
-        if (typeof composer.editor.commands?.focus === 'function') {
-          try { composer.editor.commands.focus('end', { preventScroll: true }); } catch (e) { composer.editor.commands.focus('end'); }
-        }
-        composer.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-        composer.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-        return true;
-      }
-
-      // 3. ContentEditable / ProseMirror execCommand Fallback
-      if (composer.isContentEditable || composer.getAttribute('contenteditable') === 'true') {
-        let injected = false;
-        try {
-          const sel = window.getSelection();
-          const range = document.createRange();
-          range.selectNodeContents(composer);
-          sel.removeAllRanges();
-          sel.addRange(range);
-
-          document.execCommand('delete', false);
-          injected = document.execCommand('insertText', false, text);
-        } catch (e) {}
-
-        if (!injected || !composer.textContent?.includes(text.slice(0, 15))) {
-          try {
-            const ev = new InputEvent('beforeinput', {
-              bubbles: true,
-              cancelable: true,
-              inputType: 'insertText',
-              data: text
-            });
-            composer.dispatchEvent(ev);
-          } catch (e) {}
-        }
-
-        if (!composer.textContent || !composer.textContent.includes(text.slice(0, 15))) {
-          try {
-            const esc = escapeHtml(text);
-            composer.innerHTML = `<p>${esc}</p>`;
-          } catch (e) {
-            composer.textContent = text;
-          }
-        }
-
-        composer.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-        composer.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-        try { composer.focus({ preventScroll: true }); } catch (e) { composer.focus(); }
-        return true;
-      }
-
-      // 4. Textarea or Input Fallback
-      if (composer.tagName === 'TEXTAREA' || composer.tagName === 'INPUT') {
-        const proto = composer.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
-        const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-        if (nativeSetter) {
-          nativeSetter.call(composer, text);
-        } else {
-          composer.value = text;
-        }
-        composer.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-        composer.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-        try { composer.focus({ preventScroll: true }); } catch (e) { composer.focus(); }
-        return true;
-      }
-    } catch (err) {
-      console.warn('[Prompt Dock] Error injecting prompt:', err);
-    }
-    return false;
+    } catch(e) {}
   }
-
-  window.injectPromptIntoDola = injectPromptIntoDola;
-
-  function parsePromptsFromRawText(text) {
-    if (!text || typeof text !== 'string') return [];
-    const normalized = text.replace(/\r\n?/g, '\n').trim();
-    if (!normalized) return [];
-
-    if (/\n(?:[^\S\n]*\n)+/.test(normalized)) {
-      return normalized.split(/\n(?:[^\S\n]*\n)+/).map(p => p.trim()).filter(Boolean).map((p, idx) => ({
-        text: p,
-        prompt: p,
-        title: `Prompt #${idx + 1}`,
-        done: false
-      }));
-    }
-
-    return normalized.split('\n').map(l => l.trim()).filter(Boolean).map((line, idx) => ({
-      text: line,
-      prompt: line,
-      title: `Prompt #${idx + 1}`,
-      done: false
-    }));
-  }
-
-  function saveDockPrompts() {
-    window.postMessage({
-      type: 'CTB_SAVE_PROMPTS_FROM_PAGE',
-      prompts: localDockPrompts
-    }, '*');
-  }
-
-  function isPromptDockOpen(dock, toggleBtn) {
-    if (toggleBtn) {
-      const text = toggleBtn.innerText || toggleBtn.textContent || '';
-      if (text.includes('▼')) return true;
-      if (text.includes('◀')) return false;
-    }
-    if (dock) {
-      if (dock.style.display === 'none') return false;
-      if (dock.style.display === 'block' || dock.style.display === 'flex') return true;
-      try {
-        const comp = window.getComputedStyle(dock);
-        return comp.display !== 'none' && comp.visibility !== 'hidden';
-      } catch (e) {}
-    }
-    return false;
-  }
-
-  function syncPromptDockAndToggle() {
-    try {
-      const toggleBtn = document.getElementById('channa-dock-toggle-btn');
-      const dock = document.getElementById('channa-prompt-dock');
-
-      if (!toggleBtn) return;
-      const open = isPromptDockOpen(dock, toggleBtn);
-
-      if (open) {
-        toggleBtn.style.setProperty('display', 'none', 'important');
-      } else {
-        toggleBtn.style.setProperty('display', 'flex', 'important');
-      }
-    } catch (e) {}
-  }
-
-  function advanceToNextPrompt(fromIdx) {
-    if (localDockPrompts.length === 0) return;
-    const start = (typeof fromIdx === 'number' ? fromIdx + 1 : activePromptIndex + 1);
-    for (let i = 0; i < localDockPrompts.length; i++) {
-      const candidateIdx = (start + i) % localDockPrompts.length;
-      if (!localDockPrompts[candidateIdx].done) {
-        activePromptIndex = candidateIdx;
-        return;
-      }
-    }
-    activePromptIndex = Math.min(localDockPrompts.length - 1, start);
-  }
-
-  let dockMode = localStorage.getItem('ctb_dock_mode') || 'compact'; // 'compact' | 'drawer' | 'minimized'
-
-  function applyDockMode(mode) {
-    dockMode = mode;
-    try { localStorage.setItem('ctb_dock_mode', mode); } catch (e) {}
-    const dock = document.getElementById('channa-prompt-dock');
-    if (!dock) return;
-
-    const header = document.getElementById('channa-dock-header');
-    const stepperBody = document.getElementById('channa-dock-stepper-body');
-    const drawer = document.getElementById('channa-dock-drawer');
-    const minBody = document.getElementById('channa-dock-min-body');
-    const toggleDrawerBtn = document.getElementById('channa-dock-toggle-drawer-btn');
-
-    if (mode === 'minimized') {
-      dock.classList.add('channa-dock-minimized');
-      dock.style.maxHeight = '50px';
-      if (header) header.style.display = 'none';
-      if (stepperBody) stepperBody.style.display = 'none';
-      if (drawer) drawer.style.display = 'none';
-      if (minBody) minBody.style.display = 'flex';
-    } else if (mode === 'drawer') {
-      dock.classList.remove('channa-dock-minimized');
-      dock.style.maxHeight = 'calc(100vh - 240px)';
-      if (header) header.style.display = 'flex';
-      if (stepperBody) stepperBody.style.display = 'flex';
-      if (drawer) drawer.style.display = 'flex';
-      if (minBody) minBody.style.display = 'none';
-      if (toggleDrawerBtn) {
-        toggleDrawerBtn.innerHTML = '▲ Close List';
-        toggleDrawerBtn.style.background = 'rgba(168, 85, 247, 0.35)';
-      }
-    } else { // 'compact'
-      dock.classList.remove('channa-dock-minimized');
-      dock.style.maxHeight = '140px';
-      if (header) header.style.display = 'flex';
-      if (stepperBody) stepperBody.style.display = 'flex';
-      if (drawer) drawer.style.display = 'none';
-      if (minBody) minBody.style.display = 'none';
-      if (toggleDrawerBtn) {
-        const total = localDockPrompts.length;
-        toggleDrawerBtn.innerHTML = `📋 List (${total})`;
-        toggleDrawerBtn.style.background = 'rgba(255, 255, 255, 0.08)';
-      }
-    }
-  }
-
-  function renderDockCards() {
-    const list = document.getElementById('channa-dock-prompt-list');
-    const badge = document.getElementById('channa-dock-btn-badge');
-    const counterBadge = document.getElementById('channa-dock-counter-badge');
-    const toggleDrawerBtn = document.getElementById('channa-dock-toggle-drawer-btn');
-    const minLabel = document.getElementById('channa-dock-min-label');
-    const minPasteBtn = document.getElementById('channa-dock-min-paste-btn');
-
-    const total = localDockPrompts.length;
-    const queuedCount = localDockPrompts.filter(p => !p.done).length;
-    const doneCount = total - queuedCount;
-
-    if (badge) badge.textContent = String(queuedCount);
-
-    if (toggleDrawerBtn && dockMode !== 'drawer') {
-      toggleDrawerBtn.innerHTML = `📋 List (${total})`;
-    }
-
-    // Filter pills
-    const filterPills = document.querySelectorAll('.channa-dock-filter-pill');
-    filterPills.forEach(pill => {
-      const f = pill.dataset.filter;
-      pill.classList.toggle('active', f === dockFilter);
-      if (f === 'all') pill.textContent = `All (${total})`;
-      if (f === 'queued') pill.textContent = `Queued (${queuedCount})`;
-      if (f === 'done') pill.textContent = `Done (${doneCount})`;
-    });
-
-    // Active item stats
-    const stepperPromptTitle = document.getElementById('channa-dock-stepper-title');
-    const stepperPromptSnippet = document.getElementById('channa-dock-stepper-snippet');
-    const stepperPasteBtn = document.getElementById('channa-dock-stepper-paste-btn');
-
-    if (total > 0) {
-      if (activePromptIndex >= total) activePromptIndex = 0;
-      const activeItem = localDockPrompts[activePromptIndex];
-      const activeNum = String(activePromptIndex + 1).padStart(2, '0');
-      const activeTitle = getPromptTitle(activeItem, activePromptIndex);
-      const activeText = getPromptText(activeItem);
-
-      if (counterBadge) counterBadge.innerHTML = `<strong>#${activeNum}</strong> / ${total} ${activeItem?.done ? '<span style="color:#10b981;">(Done)</span>' : '<span style="color:#c084fc;">(Queued)</span>'}`;
-      if (stepperPromptTitle) {
-        stepperPromptTitle.textContent = `#${activeNum}: ${activeTitle}`;
-        stepperPromptTitle.title = activeText;
-      }
-      if (stepperPromptSnippet) stepperPromptSnippet.textContent = activeText || '(No prompt text)';
-      if (stepperPasteBtn) stepperPasteBtn.innerHTML = `⚡ 1-Click Paste #${activeNum} & Next`;
-
-      if (minLabel) minLabel.textContent = `#${activeNum} (${total})`;
-      if (minPasteBtn) minPasteBtn.innerHTML = `⚡ Paste #${activeNum}`;
-    } else {
-      if (counterBadge) counterBadge.textContent = '0 Ready';
-      if (stepperPromptTitle) stepperPromptTitle.textContent = 'No prompts loaded';
-      if (stepperPromptSnippet) stepperPromptSnippet.textContent = 'Upload or paste prompts in Side Panel';
-      if (stepperPasteBtn) stepperPasteBtn.innerHTML = `⚡ Paste Prompt & Next`;
-      if (minLabel) minLabel.textContent = '#00';
-    }
-
-    if (!list) return;
-
-    // Filter list
-    const filtered = localDockPrompts.map((p, idx) => ({ ...p, origIdx: idx })).filter(item => {
-      if (dockFilter === 'queued' && item.done) return false;
-      if (dockFilter === 'done' && !item.done) return false;
-      if (dockSearchQuery) {
-        const text = getPromptText(item).toLowerCase();
-        const title = getPromptTitle(item, item.origIdx).toLowerCase();
-        return text.includes(dockSearchQuery) || title.includes(dockSearchQuery);
-      }
-      return true;
-    });
-
-    if (filtered.length === 0) {
-      list.innerHTML = `
-        <div style="text-align: center; padding: 18px 10px; color: #94a3b8; font-size: 10px;">
-          ${total === 0 ? 'No prompts yet. Load prompts in Side Panel.' : 'No matching prompts found.'}
-        </div>
-      `;
-      return;
-    }
-
-    const fragment = document.createDocumentFragment();
-
-    filtered.forEach(item => {
-      const origIdx = item.origIdx;
-      const numStr = String(origIdx + 1).padStart(2, '0');
-      const card = document.createElement('div');
-      const isActive = origIdx === activePromptIndex;
-      card.className = `channa-dock-card${item.done ? ' done' : ''}${isActive ? ' active-card' : ''}`;
-      card.id = `channa-dock-card-${origIdx}`;
-
-      const title = getPromptTitle(item, origIdx);
-      const fullText = getPromptText(item);
-
-      card.innerHTML = `
-        <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-          <div style="display: flex; align-items: center; gap: 6px; overflow: hidden; flex: 1;">
-            <span style="background: ${isActive ? 'linear-gradient(135deg, #059669, #10b981)' : 'rgba(168, 85, 247, 0.25)'}; color: ${isActive ? '#fff' : '#c084fc'}; font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 4px; font-family: monospace;">#${numStr}</span>
-            <span style="font-size: 10.5px; font-weight: 600; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;" title="${escapeHtml(fullText)}">${escapeHtml(title)}</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 4px;">
-            <button class="channa-dock-paste-btn" data-idx="${origIdx}" title="Paste into composer">📋 Paste</button>
-            <button class="channa-dock-paste-next-btn" data-idx="${origIdx}" title="Paste & Advance">⚡ Next</button>
-            <button class="channa-dock-toggle-done-btn" data-idx="${origIdx}" style="background: none; border: none; font-size: 11px; cursor: pointer; padding: 0 2px;" title="Toggle Done">${item.done ? '✅' : '⚪'}</button>
-          </div>
-        </div>
-      `;
-
-      fragment.appendChild(card);
-    });
-
-    list.replaceChildren(fragment);
-  }
-
-  function makeDockDraggable(dock, handle) {
-    if (!dock || !handle || handle.__ctb_drag_bound) return;
-    handle.__ctb_drag_bound = true;
-
-    let isDragging = false;
-    let startX = 0, startY = 0, initialLeft = 0, initialTop = 0;
-
-    handle.addEventListener('mousedown', (e) => {
-      if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
-      isDragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      const rect = dock.getBoundingClientRect();
-      initialLeft = rect.left;
-      initialTop = rect.top;
-
-      dock.style.bottom = 'auto';
-      dock.style.right = 'auto';
-      dock.style.transform = 'none';
-      dock.style.left = initialLeft + 'px';
-      dock.style.top = initialTop + 'px';
-
-      document.body.style.userSelect = 'none';
-    });
-
-    document.addEventListener('mousemove', (e) => {
-      if (!isDragging) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      const newLeft = Math.max(10, Math.min(window.innerWidth - dock.offsetWidth - 10, initialLeft + dx));
-      const maxAllowedTop = Math.max(10, window.innerHeight - dock.offsetHeight - 160);
-      const newTop = Math.max(10, Math.min(maxAllowedTop, initialTop + dy));
-      dock.style.left = newLeft + 'px';
-      dock.style.top = newTop + 'px';
-    });
-
-    document.addEventListener('mouseup', () => {
-      if (isDragging) {
-        isDragging = false;
-        document.body.style.userSelect = '';
-        try {
-          localStorage.setItem('ctb_dock_pos', JSON.stringify({
-            left: dock.style.left,
-            top: dock.style.top
-          }));
-        } catch (e) {}
-      }
-    });
-  }
-
-  function ensurePromptDockDOM() {
-    if (!document.body) return;
-
-    // Inject Modern Glassmorphism CSS
-    if (!document.getElementById('ctb-prompt-dock-side-style')) {
-      const style = document.createElement('style');
-      style.id = 'ctb-prompt-dock-side-style';
-      style.textContent = `
-        #channa-dock-toggle-btn {
-          position: fixed !important;
-          top: 50% !important;
-          right: 0px !important;
-          left: auto !important;
-          bottom: auto !important;
-          transform: translateY(-50%) !important;
-          border-radius: 14px 0 0 14px !important;
-          z-index: 999999 !important;
-          background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%) !important;
-          border: 1px solid rgba(168, 85, 247, 0.6) !important;
-          border-right: none !important;
-          color: #ffffff !important;
-          padding: 8px 12px !important;
-          cursor: pointer !important;
-          display: flex !important;
-          align-items: center !important;
-          gap: 6px !important;
-          box-shadow: -4px 0 20px rgba(0, 0, 0, 0.65), -2px 0 10px rgba(124, 58, 237, 0.5) !important;
-          transition: transform 0.2s ease, right 0.2s ease !important;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-          user-select: none !important;
-        }
-        #channa-dock-toggle-btn:hover {
-          transform: translateY(-50%) scale(1.04) !important;
-          box-shadow: -6px 0 28px rgba(124, 58, 237, 0.75) !important;
-        }
-        #channa-prompt-dock {
-          position: fixed !important;
-          top: 75px !important;
-          right: 20px !important;
-          bottom: auto !important;
-          left: auto !important;
-          transform: none !important;
-          width: 350px !important;
-          max-width: calc(100vw - 32px) !important;
-          max-height: calc(100vh - 240px) !important;
-          background: rgba(14, 11, 26, 0.94) !important;
-          border: 1px solid rgba(168, 85, 247, 0.35) !important;
-          border-radius: 16px !important;
-          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65), 0 0 24px rgba(124, 58, 237, 0.25) !important;
-          backdrop-filter: blur(24px) !important;
-          z-index: 999998 !important;
-          display: none;
-          flex-direction: column !important;
-          overflow: hidden !important;
-          overscroll-behavior: contain !important;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-          color: #f1f5f9 !important;
-          box-sizing: border-box !important;
-          transition: box-shadow 0.2s ease;
-        }
-        #channa-dock-header {
-          flex-shrink: 0 !important;
-          user-select: none !important;
-        }
-        #channa-dock-stepper-body {
-          flex-shrink: 0 !important;
-        }
-        #channa-dock-drawer {
-          flex: 1 1 auto !important;
-          min-height: 0 !important;
-          overflow: hidden !important;
-          display: none;
-          flex-direction: column !important;
-        }
-        #channa-dock-prompt-list {
-          flex: 1 1 auto !important;
-          max-height: calc(100vh - 380px) !important;
-          min-height: 80px !important;
-          overflow-y: auto !important;
-          scroll-behavior: smooth !important;
-        }
-        #channa-prompt-dock.channa-dock-minimized {
-          width: auto !important;
-          min-width: 240px !important;
-          border-radius: 20px !important;
-          padding: 4px 6px !important;
-        }
-        .channa-dock-hero-paste-btn {
-          background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
-          color: white !important;
-          border: 1px solid #34d399 !important;
-          border-radius: 8px !important;
-          padding: 8px 12px !important;
-          font-size: 11.5px !important;
-          font-weight: 800 !important;
-          cursor: pointer !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          gap: 6px !important;
-          box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3) !important;
-          transition: all 0.2s ease !important;
-          width: 100% !important;
-          margin-top: 2px !important;
-        }
-        .channa-dock-hero-paste-btn:hover {
-          background: linear-gradient(135deg, #10b981 0%, #34d399 100%) !important;
-          box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45) !important;
-          transform: translateY(-1px) !important;
-        }
-        .channa-dock-hero-paste-btn:active {
-          transform: scale(0.98) !important;
-        }
-        .channa-dock-card {
-          background: rgba(255, 255, 255, 0.04);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: 8px;
-          padding: 6px 9px;
-          margin-bottom: 5px;
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          transition: border-color 0.2s, background 0.2s;
-        }
-        .channa-dock-card:hover {
-          background: rgba(255, 255, 255, 0.07);
-          border-color: rgba(168, 85, 247, 0.35);
-        }
-        .channa-dock-card.active-card {
-          border-color: rgba(56, 189, 248, 0.6) !important;
-          background: rgba(56, 189, 248, 0.06) !important;
-        }
-        .channa-dock-card.done {
-          opacity: 0.6;
-          border-color: rgba(16, 185, 129, 0.3);
-        }
-        .channa-dock-paste-btn {
-          background: linear-gradient(135deg, #7c3aed, #4f46e5);
-          color: white;
-          border: 1px solid rgba(192, 132, 252, 0.4);
-          border-radius: 5px;
-          padding: 3px 7px;
-          font-size: 9.5px;
-          font-weight: 700;
-          cursor: pointer;
-        }
-        .channa-dock-paste-next-btn {
-          background: linear-gradient(135deg, #059669, #10b981);
-          color: white;
-          border: 1px solid rgba(52, 211, 153, 0.4);
-          border-radius: 5px;
-          padding: 3px 8px;
-          font-size: 9.5px;
-          font-weight: 700;
-          cursor: pointer;
-        }
-        .channa-dock-filter-pill {
-          background: rgba(255, 255, 255, 0.06);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          border-radius: 5px;
-          padding: 2px 7px;
-          font-size: 9px;
-          color: #94a3b8;
-          cursor: pointer;
-        }
-        .channa-dock-filter-pill.active {
-          background: rgba(168, 85, 247, 0.25);
-          border-color: #a855f7;
-          color: #f8fafc;
-          font-weight: 700;
-        }
-        #channa-dock-prompt-list::-webkit-scrollbar {
-          width: 4px;
-        }
-        #channa-dock-prompt-list::-webkit-scrollbar-track {
-          background: rgba(0, 0, 0, 0.2);
-        }
-        #channa-dock-prompt-list::-webkit-scrollbar-thumb {
-          background: #7c3aed;
-          border-radius: 4px;
-        }
-      `;
-      (document.head || document.documentElement).appendChild(style);
-    }
-
-    // Prompt dock and toggle button disabled per user request (clean UI)
-    let toggleBtn = null;
-
-    // Prompt Dock Panel
-    let dock = document.getElementById('channa-prompt-dock');
-    if (!dock) {
-      dock = document.createElement('div');
-      dock.id = 'channa-prompt-dock';
-
-      // Ensure dock starts at safe top-right position away from bottom prompt box
-      try {
-        const savedPos = JSON.parse(localStorage.getItem('ctb_dock_pos') || 'null');
-        if (savedPos && savedPos.left && savedPos.top) {
-          const topVal = parseFloat(savedPos.top);
-          if (!isNaN(topVal) && topVal < window.innerHeight - 240) {
-            dock.style.left = savedPos.left;
-            dock.style.top = savedPos.top;
-            dock.style.bottom = 'auto';
-            dock.style.right = 'auto';
-          } else {
-            localStorage.removeItem('ctb_dock_pos');
-            dock.style.top = '75px';
-            dock.style.right = '20px';
-            dock.style.bottom = 'auto';
-            dock.style.left = 'auto';
-          }
-        } else {
-          dock.style.top = '75px';
-          dock.style.right = '20px';
-          dock.style.bottom = 'auto';
-          dock.style.left = 'auto';
-        }
-      } catch (e) {
-        dock.style.top = '75px';
-        dock.style.right = '20px';
-        dock.style.bottom = 'auto';
-        dock.style.left = 'auto';
-      }
-
-      dock.innerHTML = `
-        <!-- 1. Header with Drag Handle & Controls -->
-        <div id="channa-dock-header" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: rgba(0, 0, 0, 0.4); border-bottom: 1px solid rgba(168, 85, 247, 0.25); cursor: move; user-select: none;">
-          <div style="display: flex; align-items: center; gap: 6px;" id="channa-dock-drag-handle">
-            <span style="color: #a855f7; font-size: 13px;">⠿</span>
-            <strong style="font-size: 11px; font-weight: 800; background: linear-gradient(135deg, #c084fc, #38bdf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">PROMPTS</strong>
-            <span id="channa-dock-counter-badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); font-size: 9px; font-weight: 700; border-radius: 8px; padding: 1px 6px;">01 / 100</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 4px;">
-            <button id="channa-dock-toggle-drawer-btn" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #e2e8f0; font-size: 9px; font-weight: 700; border-radius: 6px; padding: 2px 7px; cursor: pointer;">📋 List (0)</button>
-            <button id="channa-dock-minimize-btn" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #e2e8f0; font-size: 9.5px; border-radius: 6px; padding: 2px 6px; cursor: pointer;" title="Minimize to floating pill">➖</button>
-            <button id="channa-dock-close-btn" style="background: none; border: none; color: #94a3b8; font-size: 13px; cursor: pointer; padding: 0 4px; line-height: 1;" title="Close Dock">✕</button>
-          </div>
-        </div>
-
-        <!-- 2. Compact Stepper Body (The Feather-Light HUD) -->
-        <div id="channa-dock-stepper-body" style="padding: 8px 12px; display: flex; flex-direction: column; gap: 6px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-            <button id="channa-dock-stepper-prev" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 10px; font-weight: 700; cursor: pointer;" title="Previous prompt">◀</button>
-            <div style="flex: 1; overflow: hidden; text-align: center;" id="channa-dock-stepper-title-box">
-              <div id="channa-dock-stepper-title" style="font-size: 11px; font-weight: 700; color: #38bdf8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Active Prompt Title</div>
-              <div id="channa-dock-stepper-snippet" style="font-size: 9px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;">Preview snippet...</div>
-            </div>
-            <button id="channa-dock-stepper-next" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 10px; font-weight: 700; cursor: pointer;" title="Next prompt">▶</button>
-          </div>
-
-          <!-- Primary Super-Action Button -->
-          <button id="channa-dock-stepper-paste-btn" class="channa-dock-hero-paste-btn" title="Paste into Dola and advance">
-            ⚡ 1-Click Paste & Next
-          </button>
-        </div>
-
-        <!-- 3. Minimized Pill Body (Shown ONLY in minimized mode) -->
-        <div id="channa-dock-min-body" style="display: none; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 8px;">
-          <span id="channa-dock-min-label" style="font-size: 10px; font-weight: 800; color: #c084fc; font-family: monospace;">#01</span>
-          <button id="channa-dock-min-paste-btn" style="background: linear-gradient(135deg, #059669, #10b981); color: white; border: 1px solid #34d399; border-radius: 6px; padding: 3px 8px; font-size: 9.5px; font-weight: 800; cursor: pointer;">⚡ Paste & Next</button>
-          <button id="channa-dock-expand-btn" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.15); color: #f8fafc; border-radius: 6px; padding: 2px 6px; font-size: 10px; cursor: pointer;" title="Expand Dock">↗</button>
-        </div>
-
-        <!-- 4. Collapsible Drawer (Hidden by default, opens on '📋 List' click) -->
-        <div id="channa-dock-drawer" style="display: none; flex-direction: column; border-top: 1px solid rgba(168, 85, 247, 0.25); background: rgba(0, 0, 0, 0.3);">
-          <!-- Search & Filters -->
-          <div style="padding: 6px 10px; display: flex; flex-direction: column; gap: 5px;">
-            <div style="display: flex; gap: 4px;">
-              <button class="channa-dock-filter-pill active" data-filter="all">All</button>
-              <button class="channa-dock-filter-pill" data-filter="queued">Queued</button>
-              <button class="channa-dock-filter-pill" data-filter="done">Done</button>
-              <input id="channa-dock-search-box" type="text" placeholder="🔍 Search..." style="flex: 1; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; padding: 3px 7px; font-size: 9.5px; color: #f8fafc; outline: none;" />
-            </div>
-          </div>
-
-          <!-- Prompts Scrollable List -->
-          <div id="channa-dock-prompt-list" style="flex: 1; overflow-y: auto; padding: 6px 10px; max-height: 260px; scrollbar-width: thin;"></div>
-
-          <!-- Drawer Footer -->
-          <div style="padding: 6px 10px; background: rgba(0, 0, 0, 0.45); border-top: 1px solid rgba(255, 255, 255, 0.06); display: flex; align-items: center; justify-content: space-between; font-size: 8.5px; color: #94a3b8;">
-            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; color: #cbd5e1;">
-              <input type="checkbox" id="channa-dock-auto-advance-chk" checked style="accent-color: #8b5cf6;" />
-              Auto-advance
-            </label>
-            <div style="display: flex; gap: 8px;">
-              <span id="channa-dock-reset-done" style="color: #38bdf8; cursor: pointer;">Reset</span>
-              <span id="channa-dock-clear-all" style="color: #ef4444; cursor: pointer;">Clear</span>
-            </div>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(dock);
-
-      // Permanently lock dock scrollTop and scrollLeft to 0 so its header NEVER shifts or clips
-      dock.addEventListener('scroll', () => {
-        if (dock.scrollTop !== 0) dock.scrollTop = 0;
-        if (dock.scrollLeft !== 0) dock.scrollLeft = 0;
-      }, { passive: true });
-
-      // Make draggable
-      const dragHeader = document.getElementById('channa-dock-header');
-      makeDockDraggable(dock, dragHeader);
-
-      // Drawer toggle
-      const toggleDrawerBtn = document.getElementById('channa-dock-toggle-drawer-btn');
-      if (toggleDrawerBtn) {
-        toggleDrawerBtn.addEventListener('click', () => {
-          applyDockMode(dockMode === 'drawer' ? 'compact' : 'drawer');
-        });
-      }
-
-      // Minimize button
-      const minBtn = document.getElementById('channa-dock-minimize-btn');
-      if (minBtn) {
-        minBtn.addEventListener('click', () => {
-          applyDockMode('minimized');
-        });
-      }
-
-      // Expand button
-      const expBtn = document.getElementById('channa-dock-expand-btn');
-      if (expBtn) {
-        expBtn.addEventListener('click', () => {
-          applyDockMode('compact');
-        });
-      }
-
-      // Minimized paste button
-      const minPasteBtn = document.getElementById('channa-dock-min-paste-btn');
-      if (minPasteBtn) {
-        minPasteBtn.addEventListener('click', () => {
-          const stepperPasteBtn = document.getElementById('channa-dock-stepper-paste-btn');
-          if (stepperPasteBtn) stepperPasteBtn.click();
-        });
-      }
-
-      function selectAndPastePrompt(newIndex) {
-        if (localDockPrompts.length === 0) return;
-        activePromptIndex = (newIndex + localDockPrompts.length) % localDockPrompts.length;
-        const item = localDockPrompts[activePromptIndex];
-        const text = getPromptText(item);
-        if (text) {
-          injectPromptIntoDola(text);
-        }
-        renderDockCards();
-        scrollToActiveCard();
-        saveDockPrompts();
-        if (typeof window.__showChannaNotice === 'function') {
-          const activeNum = String(activePromptIndex + 1).padStart(2, '0');
-          window.__showChannaNotice(`📋 Prompt #${activeNum} pasted into prompt box!`, 1500);
-        }
-        if (dock) dock.scrollTop = 0;
-      }
-
-      // Bindings for Stepper Controls - Clicking Prev or Next automatically pastes into prompt box!
-      const stepperPrevBtn = document.getElementById('channa-dock-stepper-prev');
-      const stepperNextBtn = document.getElementById('channa-dock-stepper-next');
-      const stepperPasteBtn = document.getElementById('channa-dock-stepper-paste-btn');
-
-      if (stepperPrevBtn) {
-        stepperPrevBtn.addEventListener('click', () => {
-          if (localDockPrompts.length > 0) {
-            selectAndPastePrompt(activePromptIndex - 1);
-          }
-        });
-      }
-
-      if (stepperNextBtn) {
-        stepperNextBtn.addEventListener('click', () => {
-          if (localDockPrompts.length > 0) {
-            selectAndPastePrompt(activePromptIndex + 1);
-          }
-        });
-      }
-
-      const stepperTitleBox = document.getElementById('channa-dock-stepper-title-box');
-      if (stepperTitleBox) {
-        stepperTitleBox.addEventListener('click', () => {
-          if (localDockPrompts.length > 0 && localDockPrompts[activePromptIndex]) {
-            const text = getPromptText(localDockPrompts[activePromptIndex]);
-            if (text) {
-              injectPromptIntoDola(text);
-              if (typeof window.__showChannaNotice === 'function') {
-                const activeNum = String(activePromptIndex + 1).padStart(2, '0');
-                window.__showChannaNotice(`📋 Prompt #${activeNum} pasted into prompt box!`, 1500);
-              }
-            }
-          }
-        });
-      }
-
-      if (stepperPasteBtn) {
-        stepperPasteBtn.addEventListener('click', () => {
-          if (localDockPrompts.length > 0 && localDockPrompts[activePromptIndex]) {
-            const item = localDockPrompts[activePromptIndex];
-            const text = getPromptText(item);
-            const success = injectPromptIntoDola(text);
-            if (success) {
-              item.done = true;
-              stepperPasteBtn.innerHTML = `✓ PASTED!`;
-              setTimeout(() => {
-                advanceToNextPrompt(activePromptIndex);
-                const nextItem = localDockPrompts[activePromptIndex];
-                if (nextItem) {
-                  const nextText = getPromptText(nextItem);
-                  if (nextText) injectPromptIntoDola(nextText);
-                }
-                saveDockPrompts();
-                renderDockCards();
-                scrollToActiveCard();
-              }, 400);
-              if (typeof window.__showChannaNotice === 'function') {
-                window.__showChannaNotice(`✅ Prompt #${String(activePromptIndex + 1).padStart(2, '0')} pasted into Dola chat!`);
-              }
-            }
-          }
-        });
-      }
-
-      // Filter pills binding
-      const filterPills = dock.querySelectorAll('.channa-dock-filter-pill');
-      filterPills.forEach(pill => {
-        pill.addEventListener('click', () => {
-          dockFilter = pill.dataset.filter || 'all';
-          renderDockCards();
-        });
-      });
-
-      // Auto-advance checkbox
-      const autoAdvChk = document.getElementById('channa-dock-auto-advance-chk');
-      if (autoAdvChk) {
-        autoAdvChk.addEventListener('change', e => {
-          autoAdvanceEnabled = e.target.checked;
-        });
-      }
-
-      // Close button
-      const closeBtn = document.getElementById('channa-dock-close-btn');
-      if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-          dock.style.setProperty('display', 'none', 'important');
-          syncPromptDockAndToggle();
-        });
-      }
-
-      // Search box
-      const searchBox = document.getElementById('channa-dock-search-box');
-      if (searchBox) {
-        searchBox.addEventListener('input', (e) => {
-          dockSearchQuery = (e.target.value || '').trim().toLowerCase();
-          renderDockCards();
-        });
-      }
-
-      // Reset Done
-      const resetDoneBtn = document.getElementById('channa-dock-reset-done');
-      if (resetDoneBtn) {
-        resetDoneBtn.addEventListener('click', () => {
-          localDockPrompts.forEach(p => p.done = false);
-          renderDockCards();
-          saveDockPrompts();
-        });
-      }
-
-      // Clear All
-      const clearAllBtn = document.getElementById('channa-dock-clear-all');
-      if (clearAllBtn) {
-        clearAllBtn.addEventListener('click', () => {
-          if (confirm('Clear all prompts from dock?')) {
-            localDockPrompts = [];
-            activePromptIndex = 0;
-            renderDockCards();
-            saveDockPrompts();
-          }
-        });
-      }
-
-      applyDockMode(dockMode);
-    }
-  }
-
-  function scrollToActiveCard() {
-    const dock = document.getElementById('channa-prompt-dock');
-    if (dock && dock.scrollTop !== 0) {
-      dock.scrollTop = 0;
-    }
-
-    const list = document.getElementById('channa-dock-prompt-list');
-    const drawer = document.getElementById('channa-dock-drawer');
-    if (!list || !drawer || drawer.style.display === 'none') {
-      if (dock) dock.scrollTop = 0;
-      return;
-    }
-
-    setTimeout(() => {
-      if (dock && dock.scrollTop !== 0) {
-        dock.scrollTop = 0;
-      }
-      const card = document.getElementById(`channa-dock-card-${activePromptIndex}`);
-      if (card && list) {
-        // Calculate offset strictly inside list container ONLY — never scroll outer dock or page!
-        const cardOffsetTop = card.offsetTop;
-        const cardHeight = card.offsetHeight;
-        const listHeight = list.clientHeight;
-        const targetScroll = cardOffsetTop - (listHeight / 2) + (cardHeight / 2);
-
-        list.scrollTo({
-          top: Math.max(0, targetScroll),
-          behavior: 'smooth'
-        });
-      }
-      if (dock && dock.scrollTop !== 0) {
-        dock.scrollTop = 0;
-      }
-    }, 25);
-  }
-
-  // Delegated click handler for Card actions
-  document.addEventListener('click', (e) => {
-    // 1. Direct Paste Button
-    const pasteBtn = e.target.closest('.channa-dock-paste-btn');
-    if (pasteBtn) {
-      const idx = parseInt(pasteBtn.dataset.idx, 10);
-      if (!isNaN(idx) && localDockPrompts[idx]) {
-        const item = localDockPrompts[idx];
-        const text = getPromptText(item);
-        const success = injectPromptIntoDola(text);
-        if (success) {
-          pasteBtn.textContent = '✓ PASTED!';
-          pasteBtn.style.background = 'linear-gradient(135deg, #059669, #10b981)';
-          item.done = true;
-          activePromptIndex = idx;
-          if (autoAdvanceEnabled) {
-            advanceToNextPrompt(idx);
-          }
-          saveDockPrompts();
-          renderDockCards();
-          if (typeof window.__showChannaNotice === 'function') {
-            window.__showChannaNotice(`✅ Prompt #${String(idx + 1).padStart(2, '0')} pasted into Dola chat!`);
-          }
-        }
-      }
-      return;
-    }
-
-    // 2. Paste & Next Button
-    const pasteNextBtn = e.target.closest('.channa-dock-paste-next-btn');
-    if (pasteNextBtn) {
-      const idx = parseInt(pasteNextBtn.dataset.idx, 10);
-      if (!isNaN(idx) && localDockPrompts[idx]) {
-        const item = localDockPrompts[idx];
-        const text = getPromptText(item);
-        const success = injectPromptIntoDola(text);
-        if (success) {
-          pasteNextBtn.textContent = '✓ PASTED!';
-          item.done = true;
-          advanceToNextPrompt(idx);
-          const nextItem = localDockPrompts[activePromptIndex];
-          if (nextItem) {
-            const nextText = getPromptText(nextItem);
-            if (nextText) injectPromptIntoDola(nextText);
-          }
-          saveDockPrompts();
-          renderDockCards();
-          scrollToActiveCard();
-          if (typeof window.__showChannaNotice === 'function') {
-            window.__showChannaNotice(`✅ Prompt #${String(idx + 1).padStart(2, '0')} pasted! Advanced to #${String(activePromptIndex + 1).padStart(2, '0')}.`);
-          }
-        }
-      }
-      return;
-    }
-
-    // 3. Expand / Collapse text toggle
-    const expandToggle = e.target.closest('.channa-dock-toggle-expand');
-    if (expandToggle) {
-      const idx = parseInt(expandToggle.dataset.idx, 10);
-      if (!isNaN(idx)) {
-        if (expandedCardIndices.has(idx)) {
-          expandedCardIndices.delete(idx);
-        } else {
-          expandedCardIndices.add(idx);
-        }
-        renderDockCards();
-      }
-      return;
-    }
-
-    // 4. Toggle Done status
-    const doneBtn = e.target.closest('.channa-dock-toggle-done-btn');
-    if (doneBtn) {
-      const idx = parseInt(doneBtn.dataset.idx, 10);
-      if (!isNaN(idx) && localDockPrompts[idx]) {
-        localDockPrompts[idx].done = !localDockPrompts[idx].done;
-        saveDockPrompts();
-        renderDockCards();
-      }
-      return;
-    }
-
-    // 5. Delete button
-    const delBtn = e.target.closest('.channa-dock-del-btn');
-    if (delBtn) {
-      const idx = parseInt(delBtn.dataset.idx, 10);
-      if (!isNaN(idx) && localDockPrompts[idx]) {
-        localDockPrompts.splice(idx, 1);
-        if (activePromptIndex >= localDockPrompts.length) {
-          activePromptIndex = Math.max(0, localDockPrompts.length - 1);
-        }
-        saveDockPrompts();
-        renderDockCards();
-      }
-      return;
-    }
-
-    // 6. Card Body Click: Select & Paste into chat prompt box
-    const card = e.target.closest('.channa-dock-card');
-    if (card && !e.target.closest('button') && !e.target.closest('input')) {
-      const cardIdx = parseInt(card.id.replace('channa-dock-card-', ''), 10);
-      if (!isNaN(cardIdx) && localDockPrompts[cardIdx]) {
-        selectAndPastePrompt(cardIdx);
-      }
-      return;
-    }
-  });
-
-  // Cross-world communication
-  window.addEventListener('message', (e) => {
-    if (e.data?.type === 'CTB_SYNC_PROMPTS') {
-      if (Array.isArray(e.data.prompts)) {
-        localDockPrompts = e.data.prompts;
-        ensurePromptDockDOM();
-        renderDockCards();
-        syncPromptDockAndToggle();
-      }
-    }
-    if (e.data?.type === 'CHANNA_PASTE_PROMPT') {
-      const promptText = getPromptText(e.data);
-      if (promptText) {
-        injectPromptIntoDola(promptText);
-        if (typeof window.__showChannaNotice === 'function') {
-          const num = e.data.promptNumber ? `#${String(e.data.promptNumber).padStart(2, '0')} ` : '';
-          window.__showChannaNotice(`✅ Prompt ${num}pasted into chat!`);
-        }
-      }
-    }
-  });
-
-  // Close dock on Escape
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      const dock = document.getElementById('channa-prompt-dock');
-      if (dock && dock.style.display !== 'none') {
-        dock.style.setProperty('display', 'none', 'important');
-        syncPromptDockAndToggle();
-      }
-    }
-  }, { passive: true });
-
-  // Close dock on outside pointerdown
-  document.addEventListener('pointerdown', (e) => {
-    const dock = document.getElementById('channa-prompt-dock') || document.getElementById('channa-workflow-hud');
-    const toggleBtn = document.getElementById('channa-dock-toggle-btn');
-    if (!dock || dock.style.display === 'none') return;
-    if (!dock.contains(e.target) && (!toggleBtn || !toggleBtn.contains(e.target))) {
-      dock.style.setProperty('display', 'none', 'important');
-      syncPromptDockAndToggle();
-    }
-  }, { passive: true });
-
-  function initPromptDock() {
-    ensurePromptDockDOM();
-    syncPromptDockAndToggle();
-    if (localDockPrompts.length === 0) {
-      window.postMessage({ type: 'CTB_REQUEST_PROMPT_SYNC' }, '*');
-    }
-  }
-
-  initPromptDock();
-  setTimeout(() => window.postMessage({ type: 'CTB_REQUEST_PROMPT_SYNC' }, '*'), 500);
-  setTimeout(() => window.postMessage({ type: 'CTB_REQUEST_PROMPT_SYNC' }, '*'), 1500);
-  setInterval(initPromptDock, 4000);
-  window.addEventListener('DOMContentLoaded', initPromptDock, { passive: true });
-  window.addEventListener('load', initPromptDock, { passive: true });
+  removePromptDockElements();
+  window.addEventListener('DOMContentLoaded', removePromptDockElements, { passive: true });
+  window.addEventListener('load', removePromptDockElements, { passive: true });
 })();
 
   // ⚡ DOLA HIGH DEMAND AUTO-BYPASS & ANTI-FLAGGING CONTROLLER
@@ -4105,19 +2988,183 @@ if (typeof window !== 'undefined') {
       return new File([u8arr], name, { type: mime, lastModified: Date.now() });
     }
 
+    /**
+     * Tiền xử lý cấu trúc ảnh qua Canvas (Xóa EXIF/Metadata, thêm vi nhiễu, chống quét lọc AI)
+     * @param {File} file - File ảnh gốc
+     * @returns {Promise<File>} File ảnh mới đã được tái cấu trúc hoàn toàn
+     */
+    async function processBypassImage(file) {
+      return new Promise((resolve, reject) => {
+        try {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                if (!ctx) {
+                  return resolve(file); // Fallback nếu không tạo được context
+                }
+
+                // 1. Phá Perceptual Hash: Co lệch 1px nếu là số chẵn
+                const w = Math.max(1, img.naturalWidth - (img.naturalWidth % 2 === 0 ? 1 : 0));
+                const h = Math.max(1, img.naturalHeight - (img.naturalHeight % 2 === 0 ? 1 : 0));
+                canvas.width = w;
+                canvas.height = h;
+
+                // 2. Vẽ lại ảnh (Canvas tự động triệt tiêu toàn bộ EXIF, GPS, thiết bị gốc)
+                ctx.drawImage(img, 0, 0, w, h);
+
+                // 3. Bơm Micro-Noise (nhiễu vi hạt siêu nhỏ phá vỡ mã MD5 & feature vector AI)
+                try {
+                  const imgData = ctx.getImageData(0, 0, w, h);
+                  const data = imgData.data;
+                  const totalPixels = w * h;
+
+                  for (let i = 0; i < totalPixels; i += 3) {
+                    const offset = i * 4;
+                    const noise = (Math.random() - 0.5) * 4;
+                    data[offset] = Math.min(255, Math.max(0, data[offset] + noise));         // R
+                    data[offset + 1] = Math.min(255, Math.max(0, data[offset + 1] + noise)); // G
+                    data[offset + 2] = Math.min(255, Math.max(0, data[offset + 2] + noise)); // B
+                  }
+                  ctx.putImageData(imgData, 0, 0);
+                } catch(noiseErr) {
+                  console.warn('[Bypass Process] Bỏ qua bước micro-noise (CORS/safe):', noiseErr);
+                }
+
+                // 4. Phủ 1 lớp gradient cực mỏng (alpha ~0.004)
+                const gradient = ctx.createRadialGradient(w / 2, h / 2, 5, w / 2, h / 2, Math.max(w, h));
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
+                gradient.addColorStop(1, 'rgba(240, 240, 240, 0.004)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, w, h);
+
+                // 5. Xuất File mới với tên ngẫu nhiên
+                const mimeType = (file.type === 'image/png') ? 'image/png' : 'image/jpeg';
+                canvas.toBlob((blob) => {
+                  if (!blob) return resolve(file);
+                  const ext = (mimeType === 'image/png') ? 'png' : 'jpg';
+                  const newFileName = `ref_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
+                  const processedFile = new File([blob], newFileName, {
+                    type: mimeType,
+                    lastModified: Date.now()
+                  });
+                  console.log('[Bypass Process] Xử lý thành công ảnh mới:', newFileName, `(${w}x${h})`);
+                  resolve(processedFile);
+                }, mimeType, 0.96);
+              } catch (innerErr) {
+                console.warn('[Bypass Process] Lỗi xử lý canvas, dùng file gốc:', innerErr);
+                resolve(file);
+              }
+            };
+            img.onerror = () => {
+              console.warn('[Bypass Process] Lỗi nạp img, dùng file gốc');
+              resolve(file);
+            };
+            img.src = e.target.result;
+          };
+          reader.onerror = () => {
+            console.warn('[Bypass Process] Lỗi đọc file, dùng file gốc');
+            resolve(file);
+          };
+          reader.readAsDataURL(file);
+        } catch(topErr) {
+          console.warn('[Bypass Process] Exception:', topErr);
+          resolve(file);
+        }
+      });
+    }
+
+    /**
+     * Tự động gán File vào Dola mà không làm mở cửa sổ chọn file của OS
+     * @param {File} file - File ảnh đã qua xử lý lách
+     * @returns {Promise<boolean>}
+     */
+    async function injectFileIntoDola(file) {
+      // 1. Quét tìm input file sẵn có trong khu vực soạn thảo của Dola
+      let fileInput = document.querySelector('input[type="file"][accept*="image"]') 
+                   || document.querySelector('input[type="file"]');
+
+      // 2. Nếu Dola lazy-load (chưa render input ra DOM), kích hoạt nút "+"
+      if (!fileInput) {
+        const plusButton = Array.from(document.querySelectorAll('button, div[role="button"]')).find(btn => {
+          const text = (btn.textContent || '').trim();
+          const aria = btn.getAttribute('aria-label') || '';
+          return text === '+' || aria.includes('Upload') || aria.includes('image') || (btn.querySelector('svg') && aria.includes('Add'));
+        });
+
+        if (plusButton) {
+          const origShowPicker = HTMLInputElement.prototype.showPicker;
+          HTMLInputElement.prototype.showPicker = function() { return; };
+
+          plusButton.click();
+          await new Promise(resolve => setTimeout(resolve, 200));
+
+          HTMLInputElement.prototype.showPicker = origShowPicker;
+          fileInput = document.querySelector('input[type="file"][accept*="image"]') || document.querySelector('input[type="file"]');
+        }
+      }
+
+      if (!fileInput) {
+        return false;
+      }
+
+      // 3. Cơ chế DataTransfer: Nhúng trực tiếp File vào thuộc tính files của input
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files');
+      if (descriptor?.set) {
+        descriptor.set.call(fileInput, dataTransfer.files);
+      } else {
+        fileInput.files = dataTransfer.files;
+      }
+
+      // 4. Bắn sự kiện DOM để React / Vue của Dola cập nhật state
+      fileInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+      fileInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log('[Dola Injector] Gắn ảnh thành công vào Dola:', file.name);
+      return true;
+    }
+
     // Master function to attach image to Dola
     async function duongThoAttachReferenceImage(fileOrBlobOrDataUrl, name = 'reference-image.png') {
-      let file;
+      let rawFile;
       if (fileOrBlobOrDataUrl instanceof File) {
-        file = fileOrBlobOrDataUrl;
+        rawFile = fileOrBlobOrDataUrl;
       } else if (fileOrBlobOrDataUrl instanceof Blob) {
-        file = new File([fileOrBlobOrDataUrl], name, { type: fileOrBlobOrDataUrl.type || 'image/png', lastModified: Date.now() });
+        rawFile = new File([fileOrBlobOrDataUrl], name, { type: fileOrBlobOrDataUrl.type || 'image/png', lastModified: Date.now() });
       } else if (typeof fileOrBlobOrDataUrl === 'string') {
-        file = dataUrlToFile(fileOrBlobOrDataUrl, name);
+        rawFile = dataUrlToFile(fileOrBlobOrDataUrl, name);
       } else {
         throw new Error('Unsupported image payload for attachment.');
       }
 
+      // BẮT BUỘC: Đưa file qua code tiền xử lý Canvas (Xóa EXIF, phá pHash, thêm vi nhiễu)
+      let file = rawFile;
+      try {
+        console.log('[Dola Pipeline] Đang qua tầng xử lý lách kiểm duyệt Canvas:', rawFile.name);
+        file = await processBypassImage(rawFile);
+      } catch (procErr) {
+        console.warn('[Dola Pipeline] Tiền xử lý thất bại, tiếp tục với file ban đầu:', procErr);
+        file = rawFile;
+      }
+
+      // Chiến lược 1: Thử nghiệm injectFileIntoDola trực tiếp
+      try {
+        const injected = await injectFileIntoDola(file);
+        if (injected) {
+          return { success: true, fileName: file.name, method: 'direct-input-inject' };
+        }
+      } catch(injErr) {
+        console.warn('[Dola Pipeline] Direct inject warning:', injErr);
+      }
+
+      // Chiến lược 2: Fallback qua cơ chế deep-surface finder
       const target = findComposerTarget();
       if (!target) throw new Error('Dola chat composer input not found. Vui lòng mở trang chat Dola.');
       const surface = findComposerSurface(target) || target;
@@ -4132,7 +3179,54 @@ if (typeof window !== 'undefined') {
       return { success: true, fileName: file.name, method: 'silent-plus-activation' };
     }
 
+    window.processBypassImage = processBypassImage;
+    window.injectFileIntoDola = injectFileIntoDola;
     window.duongThoAttachReferenceImage = duongThoAttachReferenceImage;
+
+    // Global native image handler (directly invoked by Android bridge)
+    window.__duongThoAddImagesFromNative = async function(imagesList) {
+      if (!Array.isArray(imagesList) || !imagesList.length) return;
+      console.log('[Native Image Upload] Received images:', imagesList.length);
+
+      try {
+        for (const rec of imagesList) {
+          if (typeof dbSaveImage === 'function') {
+            await dbSaveImage(rec);
+          }
+        }
+      } catch(e) {}
+
+      let attachSuccess = false;
+      try {
+        const first = imagesList[0];
+        if (first && first.dataUrl) {
+          const res = await duongThoAttachReferenceImage(first.dataUrl, first.name || 'reference.png');
+          if (res && res.success) {
+            attachSuccess = true;
+            if (typeof window.__showChannaNotice === 'function') {
+              window.__showChannaNotice(`✅ Đã gắn ảnh tham chiếu: "${first.name || 'Ảnh'}" vào Dola!`, 4000);
+            }
+          }
+        }
+      } catch(attachErr) {
+        console.warn('[Auto Attach] Direct attach exception:', attachErr);
+      }
+
+      if (!attachSuccess && typeof window.__showChannaNotice === 'function') {
+        window.__showChannaNotice(`📸 Đã nạp ${imagesList.length} ảnh tham chiếu từ điện thoại!`, 3500);
+      }
+
+      try {
+        const listBox = document.getElementById('duongtho-ref-list');
+        if (listBox && typeof renderRefList === 'function') {
+          cachedImages = await dbGetAllImages();
+          renderRefList(listBox, cachedImages);
+        }
+        if (typeof syncRefDockButton === 'function') {
+          syncRefDockButton();
+        }
+      } catch(e) {}
+    };
 
     // --- 3. Reference Image UI & Mobile Dock ---
     function injectRefStyles() {
@@ -6268,6 +5362,9 @@ if (typeof window !== 'undefined') {
       if (window.DuongThoAndroid && typeof window.DuongThoAndroid.updateVideoCount === 'function') {
         window.DuongThoAndroid.updateVideoCount(count);
       }
+      if (typeof updateExtensionBarCount === 'function') {
+        updateExtensionBarCount(count);
+      }
     } catch(e) {}
   }
 
@@ -6625,15 +5722,27 @@ if (typeof window !== 'undefined') {
 
         const btn = document.createElement('button');
         btn.className = 'duongtho-single-dl-btn';
-        btn.innerHTML = '<span style="font-size:12px;">⬇️</span> <span>Tải 1080P Gốc (.mp4)</span>';
-        btn.style.cssText = 'position:relative;z-index:99999;margin-top:6px;margin-bottom:4px;display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;border:none;border-radius:10px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(16,185,129,0.35);transition:all 0.2s ease;';
+        btn.innerHTML = `
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span>1080P HD</span>
+        `;
 
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           e.preventDefault();
 
           btn.style.opacity = '0.7';
-          btn.innerHTML = '<span>⏳</span> <span>Đang lấy link 1080P...</span>';
+          btn.innerHTML = `
+            <svg class="dola-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
+              <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+            </svg>
+            <span>Đang lấy link...</span>
+          `;
 
           const matched = findDecryptedVideoForCard(card, index, cards.length);
           if (matched && matched.url) {
@@ -6652,26 +5761,50 @@ if (typeof window !== 'undefined') {
                 document.body.removeChild(a);
               }
 
-              btn.innerHTML = '<span>✅</span> <span>Đã gửi tải!</span>';
-              btn.style.background = 'linear-gradient(135deg, #3b82f6, #1d4ed8)';
+              btn.innerHTML = `
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <span>Đã gửi tải!</span>
+              `;
               setTimeout(() => {
                 btn.style.opacity = '1';
-                btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
-                btn.innerHTML = '<span style="font-size:12px;">⬇️</span> <span>Tải 1080P Gốc (.mp4)</span>';
+                btn.innerHTML = `
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  <span>1080P HD</span>
+                `;
               }, 3000);
             } catch(err) {
-              btn.innerHTML = '<span>❌</span> <span>Lỗi tải</span>';
+              btn.innerHTML = '<span>❌ Lỗi tải</span>';
               setTimeout(() => {
                 btn.style.opacity = '1';
-                btn.innerHTML = '<span style="font-size:12px;">⬇️</span> <span>Tải 1080P Gốc (.mp4)</span>';
+                btn.innerHTML = `
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  <span>1080P HD</span>
+                `;
               }, 2000);
             }
           } else {
             scanDom();
-            btn.innerHTML = '<span>🔄</span> <span>Đang quét 1080P... Bấm lại sau 2s</span>';
+            btn.innerHTML = '<span>🔄 Đang quét...</span>';
             setTimeout(() => {
               btn.style.opacity = '1';
-              btn.innerHTML = '<span style="font-size:12px;">⬇️</span> <span>Tải 1080P Gốc (.mp4)</span>';
+              btn.innerHTML = `
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span>1080P HD</span>
+              `;
             }, 2500);
           }
         });
@@ -6686,12 +5819,10 @@ if (typeof window !== 'undefined') {
       });
     } catch(e) {}
   }
-  window.attachIndividualVideoDownloadButtons = attachIndividualVideoDownloadButtons;
 
-  // Implement Download All directly for Android APK
   window.duongThoDownloadAll = async function() {
-    if (!extractedList.length) {
-      if (window.__showChannaNotice) window.__showChannaNotice('⚠️ Chưa có video nào để tải!');
+    if (!extractedList || !extractedList.length) {
+      if (window.__showChannaNotice) window.__showChannaNotice('⚠️ Chưa phát hiện video nào để tải!');
       return;
     }
     let count = 0;
@@ -6728,6 +5859,414 @@ if (typeof window !== 'undefined') {
     notifyAndroidCount();
   };
 
+  // ============================================================================
+  // 🎨 DOLA EXTENSION THEME ENGINE & SMART FLOATING TOOLBAR
+  // ============================================================================
+  function injectThemeStyles() {
+    if (document.getElementById('dola-extension-theme-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'dola-extension-theme-styles';
+    style.textContent = `
+      @keyframes dolaSpin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      .dola-spin {
+        animation: dolaSpin 0.85s linear infinite;
+      }
+
+      /* Ẩn dock cạnh màn hình */
+      #duongtho-ref-dock-btn {
+        display: none !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+
+      /* --- Single Video Download Buttons --- */
+      .duongtho-single-dl-btn {
+        position: relative !important;
+        z-index: 99999 !important;
+        margin-top: 6px !important;
+        margin-bottom: 4px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        font-size: 11.5px !important;
+        font-weight: 700 !important;
+        cursor: pointer !important;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        line-height: 1 !important;
+        user-select: none !important;
+      }
+
+      /* 🌟 1. CHUẨN DOLA NATIVE DARK */
+      [data-dola-theme="native"] .duongtho-single-dl-btn,
+      :root:not([data-dola-theme="custom"]) .duongtho-single-dl-btn {
+        background: #18181b !important;
+        color: #f4f4f5 !important;
+        border: 1px solid rgba(255, 255, 255, 0.16) !important;
+        border-radius: 8px !important;
+        padding: 6px 12px !important;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35) !important;
+      }
+      [data-dola-theme="native"] .duongtho-single-dl-btn:hover,
+      :root:not([data-dola-theme="custom"]) .duongtho-single-dl-btn:hover {
+        background: #27272a !important;
+        border-color: #3b82f6 !important;
+        color: #60a5fa !important;
+      }
+
+      /* 💎 2. TÙY BIẾN PRO STUDIO */
+      [data-dola-theme="custom"] .duongtho-single-dl-btn {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(52, 211, 153, 0.6) !important;
+        border-radius: 12px !important;
+        padding: 6px 13px !important;
+        box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35), 0 0 10px rgba(124, 58, 237, 0.2) !important;
+      }
+      [data-dola-theme="custom"] .duongtho-single-dl-btn:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 6px 18px rgba(16, 185, 129, 0.55), 0 0 14px rgba(168, 85, 247, 0.35) !important;
+      }
+
+      /* --- Smart In-Page Floating Toolbar --- */
+      #dola-extension-top-bar {
+        position: fixed !important;
+        top: 8px !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        z-index: 999980 !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        padding: 5px 10px !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        font-size: 11.5px !important;
+        font-weight: 600 !important;
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        user-select: none !important;
+        max-width: calc(100vw - 16px) !important;
+        overflow-x: auto !important;
+        scrollbar-width: none !important;
+      }
+      #dola-extension-top-bar::-webkit-scrollbar {
+        display: none !important;
+      }
+
+      /* Chuẩn Dola Toolbar */
+      [data-dola-theme="native"] #dola-extension-top-bar,
+      :root:not([data-dola-theme="custom"]) #dola-extension-top-bar {
+        background: rgba(24, 24, 27, 0.95) !important;
+        color: #f4f4f5 !important;
+        border: 1px solid rgba(255, 255, 255, 0.14) !important;
+        border-radius: 999px !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
+        backdrop-filter: blur(10px) !important;
+      }
+
+      /* Tùy Biến Pro Toolbar */
+      [data-dola-theme="custom"] #dola-extension-top-bar {
+        background: rgba(15, 23, 42, 0.92) !important;
+        color: #f8fafc !important;
+        border: 1px solid rgba(168, 85, 247, 0.45) !important;
+        border-radius: 999px !important;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.65), 0 0 20px rgba(124, 58, 237, 0.3) !important;
+        backdrop-filter: blur(14px) !important;
+      }
+
+      /* Brand Tag / Logo */
+      .dola-ext-brand {
+        display: flex !important;
+        align-items: center !important;
+        gap: 5px !important;
+        padding-right: 4px !important;
+      }
+      .dola-ext-logo-icon {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+      .dola-ext-brand-title {
+        font-weight: 800 !important;
+        font-size: 11px !important;
+        letter-spacing: 0.2px !important;
+      }
+      [data-dola-theme="native"] .dola-ext-brand-title,
+      :root:not([data-dola-theme="custom"]) .dola-ext-brand-title {
+        color: #ffffff !important;
+      }
+      [data-dola-theme="custom"] .dola-ext-brand-title {
+        background: linear-gradient(135deg, #a855f7 0%, #38bdf8 100%) !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+      }
+
+      .dola-ext-count-pill {
+        padding: 2px 6px !important;
+        border-radius: 999px !important;
+        font-size: 10px !important;
+        font-weight: 700 !important;
+      }
+      [data-dola-theme="native"] .dola-ext-count-pill,
+      :root:not([data-dola-theme="custom"]) .dola-ext-count-pill {
+        background: rgba(255, 255, 255, 0.12) !important;
+        color: #e4e4e7 !important;
+      }
+      [data-dola-theme="custom"] .dola-ext-count-pill {
+        background: rgba(168, 85, 247, 0.25) !important;
+        color: #c084fc !important;
+        border: 1px solid rgba(168, 85, 247, 0.3) !important;
+      }
+
+      /* Action Buttons */
+      .dola-ext-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 4px !important;
+        padding: 4px 9px !important;
+        border-radius: 999px !important;
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        cursor: pointer !important;
+        line-height: 1 !important;
+        transition: all 0.2s ease !important;
+        white-space: nowrap !important;
+      }
+
+      /* Nút Tải ảnh lên */
+      .dola-ext-upload-btn {
+        background: #0284c7 !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(56, 189, 248, 0.4) !important;
+      }
+      .dola-ext-upload-btn:hover {
+        background: #0369a1 !important;
+      }
+      [data-dola-theme="custom"] .dola-ext-upload-btn {
+        background: linear-gradient(135deg, #0284c7 0%, #06b6d4 100%) !important;
+        box-shadow: 0 2px 10px rgba(6, 182, 212, 0.35) !important;
+      }
+
+      /* Nút Tải tất cả */
+      .dola-ext-dl-btn {
+        background: #10b981 !important;
+        color: #ffffff !important;
+        border: none !important;
+      }
+      .dola-ext-dl-btn:hover {
+        background: #059669 !important;
+      }
+      [data-dola-theme="custom"] .dola-ext-dl-btn {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+        box-shadow: 0 2px 10px rgba(16, 185, 129, 0.35) !important;
+      }
+
+      /* Nút Đổi giao diện */
+      .dola-ext-theme-btn {
+        background: rgba(255, 255, 255, 0.08) !important;
+        color: #e4e4e7 !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+      }
+      .dola-ext-theme-btn:hover {
+        background: rgba(255, 255, 255, 0.16) !important;
+      }
+      [data-dola-theme="custom"] .dola-ext-theme-btn {
+        background: rgba(168, 85, 247, 0.18) !important;
+        border-color: rgba(168, 85, 247, 0.4) !important;
+        color: #e2e8f0 !important;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  function renderFloatingExtensionBar() {
+    injectThemeStyles();
+    let bar = document.getElementById('dola-extension-top-bar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'dola-extension-top-bar';
+      (document.body || document.documentElement).appendChild(bar);
+    }
+
+    const currentTheme = document.documentElement.getAttribute('data-dola-theme') || 'native';
+    const isCustom = currentTheme === 'custom';
+    const count = (extractedList && extractedList.length) ? extractedList.length : 0;
+
+    // SVG Logo chú cún con kute đeo tai nghe công nghệ
+    const logoSvg = `
+      <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Vòng cung tai nghe xanh mint -->
+        <path d="M 6 15 A 10 10 0 0 1 26 15" stroke="${isCustom ? '#34d399' : '#10b981'}" stroke-width="2.8" stroke-linecap="round"/>
+        <!-- Tai cún mềm mại -->
+        <ellipse cx="8.5" cy="14" rx="3.2" ry="5.5" fill="#f1f5f9" transform="rotate(-15 8.5 14)"/>
+        <ellipse cx="8.5" cy="14" rx="1.8" ry="3.6" fill="#f472b6" opacity="0.8" transform="rotate(-15 8.5 14)"/>
+        <ellipse cx="23.5" cy="14" rx="3.2" ry="5.5" fill="#f1f5f9" transform="rotate(15 23.5 14)"/>
+        <ellipse cx="23.5" cy="14" rx="1.8" ry="3.6" fill="#f472b6" opacity="0.8" transform="rotate(15 23.5 14)"/>
+        <!-- Đầu cún tròn xoe -->
+        <circle cx="16" cy="17" r="8.2" fill="#ffffff"/>
+        <!-- Má bầu bĩnh -->
+        <circle cx="10.8" cy="19.5" r="3" fill="#ffffff"/>
+        <circle cx="21.2" cy="19.5" r="3" fill="#ffffff"/>
+        <!-- Má hồng kute -->
+        <ellipse cx="11.2" cy="20.3" rx="1.8" ry="1.1" fill="#f472b6" opacity="0.65"/>
+        <ellipse cx="20.8" cy="20.3" rx="1.8" ry="1.1" fill="#f472b6" opacity="0.65"/>
+        <!-- Đôi mắt to tròn long lanh -->
+        <circle cx="13.2" cy="16.3" r="1.7" fill="#0f172a"/>
+        <circle cx="12.7" cy="15.7" r="0.65" fill="#ffffff"/>
+        <circle cx="18.8" cy="16.3" r="1.7" fill="#0f172a"/>
+        <circle cx="18.3" cy="15.7" r="0.65" fill="#ffffff"/>
+        <!-- Mũi & miệng cười toe toét -->
+        <ellipse cx="16" cy="18.7" rx="1.1" ry="0.8" fill="#334155"/>
+        <path d="M 14.7 20.2 Q 16 21.4 17.3 20.2" stroke="#334155" stroke-width="0.8" fill="none" stroke-linecap="round"/>
+        <!-- Lưỡi nhỏ nhí nhảnh -->
+        <circle cx="16" cy="21.1" r="0.75" fill="#fb7185"/>
+        <!-- Ốp tai nghe công nghệ tím pastel -->
+        <rect x="4.2" y="11.8" width="3.2" height="6.8" rx="1.6" fill="${isCustom ? '#06b6d4' : '#14b8a6'}"/>
+        <rect x="24.6" y="11.8" width="3.2" height="6.8" rx="1.6" fill="${isCustom ? '#06b6d4' : '#14b8a6'}"/>
+        <circle cx="5.8" cy="15.2" r="1.1" fill="${isCustom ? '#c084fc' : '#a855f7'}"/>
+        <circle cx="26.2" cy="15.2" r="1.1" fill="${isCustom ? '#c084fc' : '#a855f7'}"/>
+      </svg>
+    `;
+
+    bar.innerHTML = `
+      <div class="dola-ext-brand" title="Dola Studio Pro Extension">
+        <div class="dola-ext-logo-icon">${logoSvg}</div>
+        <span class="dola-ext-brand-title">Dola Puppy</span>
+        <span id="dola-ext-count-pill" class="dola-ext-count-pill">${count} video</span>
+      </div>
+
+      <!-- Nút Tải ảnh lên từ máy -->
+      <button id="dola-ext-upload-img-btn" class="dola-ext-btn dola-ext-upload-btn" title="Chọn ảnh từ thư viện hoặc tệp trong máy để gắn vào Dola">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <span>Tải ảnh</span>
+      </button>
+
+      <!-- Nút Tải tất cả video đã quét -->
+      <button id="dola-ext-dl-all-btn" class="dola-ext-btn dola-ext-dl-btn" style="${count > 0 ? '' : 'display:none;'}" title="Tải tất cả video đã phát hiện">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span id="dola-ext-dl-all-text">Tải (${count})</span>
+      </button>
+
+      <!-- Nút Đổi giao diện -->
+      <button id="dola-ext-theme-toggle-btn" class="dola-ext-btn dola-ext-theme-btn" title="Chuyển đổi giao diện: Chuẩn Dola hoặc Tùy Biến Pro">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
+          <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
+          <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
+          <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+          <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2z"/>
+        </svg>
+        <span>${isCustom ? '💎 Pro Studio' : '🎨 Chuẩn Dola'}</span>
+      </button>
+
+      <button id="dola-ext-close-btn" style="background:none;border:none;color:#94a3b8;font-size:12px;cursor:pointer;padding:0 3px;line-height:1;" title="Ẩn thanh">✕</button>
+    `;
+
+    // Gắn sự kiện nút Tải ảnh từ thiết bị
+    const uploadBtn = bar.querySelector('#dola-ext-upload-img-btn');
+    if (uploadBtn) {
+      uploadBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (window.AndroidDuongTho && typeof window.AndroidDuongTho.openNativeImagePicker === 'function') {
+          window.AndroidDuongTho.openNativeImagePicker();
+          return;
+        }
+        if (window.DuongThoAndroid && typeof window.DuongThoAndroid.openNativeImagePicker === 'function') {
+          window.DuongThoAndroid.openNativeImagePicker();
+          return;
+        }
+        const fileInput = document.querySelector('input[type="file"][accept*="image" i]') || document.querySelector('input[type="file"]');
+        if (fileInput) {
+          fileInput.click();
+        } else {
+          const plusBtn = document.querySelector('button[aria-label*="add" i], button[aria-label*="attach" i], button[title*="attach" i]');
+          if (plusBtn) plusBtn.click();
+        }
+      };
+    }
+
+    // Gắn sự kiện nút Tải tất cả
+    const dlAllBtn = bar.querySelector('#dola-ext-dl-all-btn');
+    if (dlAllBtn) {
+      dlAllBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (typeof window.duongThoDownloadAll === 'function') {
+          window.duongThoDownloadAll();
+        }
+      };
+    }
+
+    // Gắn sự kiện đổi theme
+    const toggleBtn = bar.querySelector('#dola-ext-theme-toggle-btn');
+    if (toggleBtn) {
+      toggleBtn.onclick = (e) => {
+        e.stopPropagation();
+        const nextTheme = (document.documentElement.getAttribute('data-dola-theme') === 'custom') ? 'native' : 'custom';
+        window.setDolaExtensionTheme(nextTheme);
+        if (window.AndroidDuongTho && typeof window.AndroidDuongTho.onThemeChanged === 'function') {
+          window.AndroidDuongTho.onThemeChanged(nextTheme);
+        } else if (window.DuongThoAndroid && typeof window.DuongThoAndroid.onThemeChanged === 'function') {
+          window.DuongThoAndroid.onThemeChanged(nextTheme);
+        }
+      };
+    }
+
+    const closeBtn = bar.querySelector('#dola-ext-close-btn');
+    if (closeBtn) {
+      closeBtn.onclick = (e) => {
+        e.stopPropagation();
+        bar.style.display = 'none';
+      };
+    }
+  }
+
+  function updateExtensionBarCount(count) {
+    const pill = document.getElementById('dola-ext-count-pill');
+    if (pill) {
+      pill.textContent = count + ' video';
+    }
+    const dlBtn = document.getElementById('dola-ext-dl-all-btn');
+    const dlText = document.getElementById('dola-ext-dl-all-text');
+    if (dlBtn) {
+      if (count > 0) {
+        dlBtn.style.display = 'inline-flex';
+        if (dlText) dlText.textContent = 'Tải (' + count + ')';
+      } else {
+        dlBtn.style.display = 'none';
+      }
+    }
+  }
+
+  window.setDolaExtensionTheme = function(theme) {
+    const validTheme = (theme === 'custom') ? 'custom' : 'native';
+    document.documentElement.setAttribute('data-dola-theme', validTheme);
+    try {
+      localStorage.setItem('dola_extension_theme', validTheme);
+    } catch(e) {}
+    renderFloatingExtensionBar();
+    attachIndividualVideoDownloadButtons();
+  };
+
+  // Khởi tạo theme & toolbar
+  try {
+    const initTheme = (window.AndroidDuongTho && typeof window.AndroidDuongTho.getSavedTheme === 'function')
+      ? window.AndroidDuongTho.getSavedTheme()
+      : (localStorage.getItem('dola_extension_theme') || 'native');
+    window.setDolaExtensionTheme(initTheme);
+  } catch(e) {
+    window.setDolaExtensionTheme('native');
+  }
+
   // Initial and periodic scan
   scanDom();
   setInterval(scanDom, 3000);
@@ -6735,10 +6274,12 @@ if (typeof window !== 'undefined') {
   setInterval(attachIndividualVideoDownloadButtons, 2000);
   document.addEventListener('DOMContentLoaded', () => {
     scanDom();
+    renderFloatingExtensionBar();
     attachIndividualVideoDownloadButtons();
   });
   window.addEventListener('load', () => {
     scanDom();
+    renderFloatingExtensionBar();
     attachIndividualVideoDownloadButtons();
   });
 })();

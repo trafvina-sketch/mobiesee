@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_dark"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <!-- Logo chú cún Puppy & Tiêu đề -->
+        <ImageView
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_marginTop="16dp"
+            android:contentDescription="Dola Puppy Icon"
+            android:src="@drawable/ic_app_icon_pro" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="Kích Hoạt Bản Quyền"
+            android:textColor="@color/text_light"
+            android:textSize="22sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Dola Studio Pro • RSA Security"
+            android:textColor="@color/primary"
+            android:textSize="13sp" />
+
+        <!-- Card chứa thông tin kích hoạt -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:background="@drawable/bg_license_card"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Mã Thiết Bị (Device ID):"
+                android:textColor="@color/text_muted"
+                android:textSize="13sp" />
+
+            <!-- Box hiển thị Device ID -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_input_box"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="12dp">
+
+                <TextView
+                    android:id="@+id/tvDeviceId"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="monospace"
+                    android:textIsSelectable="true"
+                    android:textColor="#38bdf8"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCopyDeviceId"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:text="Copy"
+                    android:textColor="#34d399"
+                    android:textSize="13sp"
+                    app:iconPadding="4dp" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="💡 Gửi Device ID này cho người bán để nhận mã kích hoạt (RSA Key)."
+                android:textColor="#94a3b8"
+                android:textSize="12sp" />
+
+            <!-- Phân cách -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp"
+                android:background="#334155" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Mã Kích Hoạt (License Key):"
+                android:textColor="@color/text_muted"
+                android:textSize="13sp" />
+
+            <!-- Ô nhập Key -->
+            <EditText
+                android:id="@+id/etLicenseKey"
+                android:layout_width="match_parent"
+                android:layout_height="110dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_input_box"
+                android:gravity="top|start"
+                android:hint="Dán chuỗi khóa kích hoạt được cấp vào đây..."
+                android:inputType="textMultiLine|textNoSuggestions"
+                android:padding="12dp"
+                android:textColor="@color/text_light"
+                android:textColorHint="#64748b"
+                android:textSize="13sp" />
+
+            <!-- Nút Kích Hoạt -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnActivate"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="18dp"
+                android:background="@drawable/btn_gradient"
+                android:text="KÍCH HOẠT ỨNG DỤNG"
+                android:textColor="#ffffff"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                app:backgroundTint="@null"
+                app:cornerRadius="14dp" />
+
+            <!-- Nút Cấu hình Public Key nâng cao (tuỳ chọn) -->
+            <TextView
+                android:id="@+id/tvToggleConfigPubKey"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="14dp"
+                android:padding="6dp"
+                android:text="⚙️ Cấu hình Public Key RSA (Dành cho Admin)"
+                android:textColor="#64748b"
+                android:textSize="12sp" />
+
+            <!-- Panel Cấu hình Public Key -->
+            <LinearLayout
+                android:id="@+id/layoutPubKeyConfig"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input_box"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Public Key (Base64 X509):"
+                    android:textColor="#94a3b8"
+                    android:textSize="12sp" />
+
+                <EditText
+                    android:id="@+id/etPublicKey"
+                    android:layout_width="match_parent"
+                    android:layout_height="70dp"
+                    android:layout_marginTop="6dp"
+                    android:gravity="top|start"
+                    android:hint="Dán chuỗi PUBLIC_KEY_B64 từ script tạo key..."
+                    android:inputType="textMultiLine|textNoSuggestions"
+                    android:textColor="@color/text_light"
+                    android:textColorHint="#64748b"
+                    android:textSize="11sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSavePublicKey"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:layout_marginTop="6dp"
+                    android:text="Lưu Public Key"
+                    android:textColor="#38bdf8"
+                    app:strokeColor="#38bdf8" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- Trạng thái hoặc hướng dẫn thêm phía dưới -->
+        <TextView
+            android:id="@+id/tvStatusNotice"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:gravity="center"
+            android:text="Bản quyền gắn liền với phần cứng thiết bị • An toàn &amp; Bảo mật"
+            android:textColor="#64748b"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+</ScrollView>

@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DuongThoDolaDownloader"
+rootProject.name = "Dola Downloader"
 include(":app")
