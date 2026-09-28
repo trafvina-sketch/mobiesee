@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.android")
 }
 
 android {
@@ -13,6 +14,39 @@ android {
         versionCode = 3
         versionName = "2.1.0"
         manifestPlaceholders["appName"] = "Đường Thọ Dola Master"
+    }
+
+    flavorDimensions += "appType"
+    productFlavors {
+        create("original") {
+            dimension = "appType"
+            manifestPlaceholders["appName"] = "Đường Thọ Dola Master"
+        }
+        create("clone1") {
+            dimension = "appType"
+            applicationIdSuffix = ".clone1"
+            manifestPlaceholders["appName"] = "Đường Thọ Dola [Nick 1]"
+        }
+        create("clone2") {
+            dimension = "appType"
+            applicationIdSuffix = ".clone2"
+            manifestPlaceholders["appName"] = "Đường Thọ Dola [Nick 2]"
+        }
+        create("clone3") {
+            dimension = "appType"
+            applicationIdSuffix = ".clone3"
+            manifestPlaceholders["appName"] = "Đường Thọ Dola [Nick 3]"
+        }
+        create("clone4") {
+            dimension = "appType"
+            applicationIdSuffix = ".clone4"
+            manifestPlaceholders["appName"] = "Đường Thọ Dola [Nick 4]"
+        }
+        create("clone5") {
+            dimension = "appType"
+            applicationIdSuffix = ".clone5"
+            manifestPlaceholders["appName"] = "Đường Thọ Dola [Nick 5]"
+        }
     }
 
     buildTypes {
@@ -31,6 +65,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
     }
 }
 
