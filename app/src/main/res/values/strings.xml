@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Đường Thọ Dola Master 1080P</string>
+    <string name="detected_videos">Đã quét: %1$d video</string>
+    <string name="btn_download_all">⚡ Tải hàng loạt vào Thư viện</string>
+    <string name="downloading_title">Đang lưu video 1080P...</string>
+    <string name="download_started">Bắt đầu tải video vào Thư viện máy</string>
+</resources>

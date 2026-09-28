@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_dark">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- Thanh tiến trình tải trang -->
+        <ProgressBar
+            android:id="@+id/progressBar"
+            style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:indeterminate="false"
+            android:max="100"
+            android:progressDrawable="@drawable/btn_gradient"
+            android:visibility="gone" />
+
+        <!-- Container chứa WebView toàn màn hình -->
+        <FrameLayout
+            android:id="@+id/webViewContainer"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <WebView
+                android:id="@+id/webView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- ICON BONG BÓNG NỔI (DRAGGABLE FLOATING BUBBLE)
+         Kích thước nhỏ gọn 54dp, nằm ở mép bên phải, kéo thả tự do, KHÔNG CHE KHUNG CHAT -->
+    <FrameLayout
+        android:id="@+id/floatingBubble"
+        android:layout_width="54dp"
+        android:layout_height="54dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="200dp"
+        android:layout_marginEnd="12dp"
+        android:background="@drawable/bg_bubble"
+        android:clickable="true"
+        android:elevation="12dp"
+        android:focusable="true">
+
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="4dp"
+            android:src="@drawable/ic_app_icon_pro"
+            android:contentDescription="Duong Tho Icon" />
+
+        <!-- Huy hiệu số lượng video 1080P sẵn sàng tải -->
+        <TextView
+            android:id="@+id/tvBubbleBadge"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="top|end"
+            android:background="@drawable/bg_badge"
+            android:gravity="center"
+            android:text="0"
+            android:textColor="#ffffff"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </FrameLayout>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
