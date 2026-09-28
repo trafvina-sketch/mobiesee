@@ -941,92 +941,153 @@ class MainActivity : AppCompatActivity() {
                                 for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
                                 var blob = new Blob([bytes], { type: 'text/markdown' });
                                 var file = new File([blob], '$escapedName', { type: 'text/markdown', lastModified: Date.now() });
-                                console.log('[DT] File:', file.name, file.size, 'bytes');
+                                console.log('[DT-Skill] ⚡ Chuẩn bị đính kèm file:', file.name, file.size, 'bytes');
 
-                                // ===== 1. DROP EVENT vào chat area =====
-                                var targets = [
+                                var dt = new DataTransfer();
+                                dt.items.add(file);
+
+                                // ===== CHIẾN LƯỢC 1: KÉO THẢ CHUỘT (DRAG & DROP SIMULATION) =====
+                                // Tìm các vùng nhận tệp trong chat (ProseMirror, Tiptap, contenteditable, drop-zone)
+                                var dropTargets = [
                                     document.querySelector('.tiptap'),
                                     document.querySelector('.ProseMirror'),
+                                    document.querySelector('[contenteditable="true"]'),
                                     document.querySelector('[contenteditable]'),
                                     document.querySelector('#input-engine-container'),
-                                    document.querySelector('[role="textbox"]'),
+                                    document.querySelector('[data-testid="chat_input"]'),
+                                    document.querySelector('[data-testid*="input"]'),
+                                    document.querySelector('[class*="drop-zone"]'),
+                                    document.querySelector('[class*="dropzone"]'),
+                                    document.querySelector('[class*="input-content-container"]'),
+                                    document.querySelector('[class*="composer"]'),
                                     document.querySelector('main'),
                                     document.body
                                 ].filter(Boolean);
 
-                                for (var t = 0; t < targets.length; t++) {
-                                    try {
-                                        var dt = new DataTransfer();
-                                        dt.items.add(file);
-                                        targets[t].dispatchEvent(new DragEvent('dragenter', {bubbles:true,cancelable:true,dataTransfer:dt}));
-                                        targets[t].dispatchEvent(new DragEvent('dragover', {bubbles:true,cancelable:true,dataTransfer:dt}));
-                                        targets[t].dispatchEvent(new DragEvent('drop', {bubbles:true,cancelable:true,dataTransfer:dt}));
-                                    } catch(de) {}
-                                }
-                                await new Promise(function(r){setTimeout(r,800)});
-                                
-                                // Check nếu có file input xuất hiện (Dola có thể listen drop)
-                                var fi = document.querySelector('input[type="file"]');
-                                if (fi) {
-                                    var dt2 = new DataTransfer(); dt2.items.add(file);
-                                    var d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'files');
-                                    if(d&&d.set)d.set.call(fi,dt2.files); else fi.files=dt2.files;
-                                    fi.dispatchEvent(new Event('input',{bubbles:true}));
-                                    fi.dispatchEvent(new Event('change',{bubbles:true}));
-                                    console.log('[DT] ✅ DataTransfer OK!');
-                                    if(window.__showChannaNotice) window.__showChannaNotice('⚡ File $escapedName đã gửi!',3000);
-                                    return 'dt_ok';
-                                }
-
-                                // ===== 2. Click nút + (vị trí dưới cùng bên trái) =====
-                                var allBtns = Array.from(document.querySelectorAll('button,[role="button"]'));
-                                var bots = allBtns.filter(function(b){
-                                    var r=b.getBoundingClientRect();
-                                    return r.top>window.innerHeight*0.7 && r.width<80 && r.height<80;
-                                }).sort(function(a,b){return a.getBoundingClientRect().left-b.getBoundingClientRect().left});
-                                
-                                console.log('[DT] Bottom buttons:', bots.length);
-                                if (bots.length > 0) {
-                                    bots[0].click();
-                                    console.log('[DT] Click btn left:', bots[0].getBoundingClientRect().left.toFixed(0));
-                                    await new Promise(function(r){setTimeout(r,600)});
-                                    
-                                    // Tìm "Tải tập tin"
-                                    var items = document.querySelectorAll('*');
-                                    for (var k=0; k<items.length; k++) {
-                                        var el=items[k], tx=(el.textContent||'').trim();
-                                        if (el.children.length<=3 && tx.indexOf('Tải tập tin')>=0) {
-                                            el.click();
-                                            console.log('[DT] ✅ Click Tải tập tin → onShowFileChooser');
-                                            if(window.__showChannaNotice) window.__showChannaNotice('⚡ Đang gửi file...',3000);
-                                            return 'upload_click';
+                                function fireDragDrop(target) {
+                                    ['dragenter', 'dragover', 'drop'].forEach(function(type) {
+                                        var evt;
+                                        try {
+                                            evt = new DragEvent(type, {
+                                                bubbles: true,
+                                                cancelable: true,
+                                                composed: true,
+                                                dataTransfer: dt
+                                            });
+                                        } catch(e) {
+                                            evt = document.createEvent('CustomEvent');
+                                            evt.initCustomEvent(type, true, true, null);
                                         }
-                                    }
-                                    
-                                    // Đóng menu nếu mở
-                                    document.body.click();
-                                    await new Promise(function(r){setTimeout(r,200)});
+                                        try {
+                                            Object.defineProperty(evt, 'dataTransfer', { value: dt, writable: false });
+                                        } catch(_) {}
+                                        target.dispatchEvent(evt);
+                                    });
                                 }
 
-                                // ===== 3. Tạo hidden input → trigger onShowFileChooser =====
-                                var hi = document.createElement('input');
-                                hi.type='file'; hi.accept='*/*';
-                                hi.style.cssText='position:fixed;left:-9999px;opacity:0';
-                                document.body.appendChild(hi);
-                                hi.click();
-                                console.log('[DT] Hidden input click → onShowFileChooser');
-                                if(window.__showChannaNotice) window.__showChannaNotice('⚡ Đang gửi file $escapedName...',3000);
-                                return 'hidden_input';
+                                for (var i = 0; i < dropTargets.length; i++) {
+                                    try { fireDragDrop(dropTargets[i]); } catch(e) {}
+                                }
+                                console.log('[DT-Skill] Đã bắn sự kiện Drag & Drop vào', dropTargets.length, 'vùng nhận');
+
+                                // ===== CHIẾN LƯỢC 2: PASTE EVENT (DÁN FILE VÀO TRÌNH SOẠN THẢO) =====
+                                var editors = document.querySelectorAll('.ProseMirror, .tiptap, [contenteditable="true"], [role="textbox"], textarea');
+                                for (var eIdx = 0; eIdx < editors.length; eIdx++) {
+                                    try {
+                                        var ed = editors[eIdx];
+                                        ed.focus();
+                                        var pEvt;
+                                        try {
+                                            pEvt = new ClipboardEvent('paste', { bubbles: true, cancelable: true, composed: true, clipboardData: dt });
+                                        } catch(e) {
+                                            pEvt = document.createEvent('Event');
+                                            pEvt.initEvent('paste', true, true);
+                                        }
+                                        try {
+                                            Object.defineProperty(pEvt, 'clipboardData', { value: dt, writable: false });
+                                        } catch(_) {}
+                                        ed.dispatchEvent(pEvt);
+                                    } catch(pe) {}
+                                }
+
+                                // ===== CHIẾN LƯỢC 3: NHÚNG TRỰC TIẾP VÀO CÁC INPUT FILE SẴN CÓ =====
+                                var fileInputs = Array.from(document.querySelectorAll('input[type="file"]'));
+                                for (var fIdx = 0; fIdx < fileInputs.length; fIdx++) {
+                                    try {
+                                        var fi = fileInputs[fIdx];
+                                        var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files');
+                                        if (desc && desc.set) desc.set.call(fi, dt.files);
+                                        else fi.files = dt.files;
+                                        fi.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                                        fi.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+                                        console.log('[DT-Skill] Đã gán files vào input[type=file]');
+                                    } catch(fe) {}
+                                }
+
+                                // Đợi 300ms xem giao diện Dola đã nhận tệp chưa
+                                await new Promise(function(r) { setTimeout(r, 300); });
+
+                                // Kiểm tra xem pill đính kèm đã xuất hiện trong composer chưa
+                                var hasAttachment = Boolean(document.querySelector('[class*="attachment"], [class*="file-item"], [class*="upload-item"], [class*="tag-file"]'));
+                                if (hasAttachment) {
+                                    console.log('[DT-Skill] ✅ Tệp đã xuất hiện trên giao diện Dola!');
+                                    if (window.__showChannaNotice) window.__showChannaNotice('⚡ Đã kéo thả tệp $escapedName vào chat!', 3500);
+                                    return 'attached_via_drop';
+                                }
+
+                                // ===== CHIẾN LƯỢC 4: KÍCH HOẠT NÚT ĐÍNH KÈM / UPLOAD CỦA DOLA =====
+                                // Tìm nút upload của Dola thông qua data-testid hoặc icon kẹp ghim / cộng / upload
+                                var uploadBtn = document.querySelector('[data-testid="upload_file_button"]');
+                                var clickTarget = null;
+                                if (uploadBtn) {
+                                    clickTarget = uploadBtn.closest('button, [role="button"]') || uploadBtn.parentElement || uploadBtn;
+                                }
+
+                                if (!clickTarget) {
+                                    // Tìm nút xung quanh thanh công cụ soạn thảo
+                                    var composer = document.querySelector('#input-engine-container') || document.querySelector('form') || document.body;
+                                    var allBtns = Array.from(composer.querySelectorAll('button, [role="button"]'));
+                                    clickTarget = allBtns.find(function(b) {
+                                        var aria = (b.getAttribute('aria-label') || '').toLowerCase();
+                                        var title = (b.getAttribute('title') || '').toLowerCase();
+                                        var txt = (b.textContent || '').trim();
+                                        return aria.includes('upload') || aria.includes('attach') || aria.includes('tải') || aria.includes('đính kèm') ||
+                                               title.includes('upload') || title.includes('attach') || txt === '+' || b.querySelector('svg');
+                                    });
+                                }
+
+                                if (clickTarget) {
+                                    console.log('[DT-Skill] Kích hoạt nút upload của Dola:', clickTarget);
+                                    clickTarget.click();
+                                    await new Promise(function(r) { setTimeout(r, 250); });
+
+                                    // Nếu hiện menu popup, click vào tùy chọn tải tệp
+                                    var menuItems = Array.from(document.querySelectorAll('[role="menuitem"], [class*="menu-item"], div, span'));
+                                    var uploadOption = menuItems.find(function(item) {
+                                        var t = (item.textContent || '').trim().toLowerCase();
+                                        return item.children.length <= 2 && (/tải (tập tin|tệp|file|lên)|upload\s*(file|document)?|tài liệu|tệp tin/.test(t));
+                                    });
+
+                                    if (uploadOption) {
+                                        console.log('[DT-Skill] Bấm chọn menu item:', uploadOption.textContent);
+                                        uploadOption.click();
+                                    }
+                                }
+
+                                if (window.__showChannaNotice) {
+                                    window.__showChannaNotice('⚡ Đã tải tệp $escapedName lên chat!', 3500);
+                                }
+                                return 'pipeline_completed';
                             } catch(e) {
-                                console.error('[DT]', e);
-                                return 'error:'+e.message;
+                                console.error('[DT-Skill] Lỗi:', e);
+                                return 'error:' + e.message;
                             }
                         })();
                     """.trimIndent()
                     webView.evaluateJavascript(js) { result ->
-                        android.util.Log.d("DuongTho", "Skill: $result for $displayName")
+                        android.util.Log.d("DuongTho", "Skill result: $result for $displayName")
                     }
-                    Toast.makeText(this, "⚡ Đang gửi file $displayName...", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "⚡ Đang tải $displayName lên chat...", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

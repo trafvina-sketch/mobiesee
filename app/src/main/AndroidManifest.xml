@@ -22,21 +22,15 @@
         android:usesCleartextTraffic="true">
         
         <activity
-            android:name=".ActivationActivity"
-            android:exported="true"
-            android:theme="@style/Theme.DuongThoDola">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
-        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:hardwareAccelerated="true"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
             <!-- Hỗ trợ mở link dola.com trực tiếp từ app khác -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -46,6 +40,11 @@
                 <data android:scheme="https" android:host="www.dola.com" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ActivationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.DuongThoDola" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
