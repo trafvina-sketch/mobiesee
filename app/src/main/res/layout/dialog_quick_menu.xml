@@ -179,6 +179,67 @@
             app:iconTint="#ffffff" />
 
         <!-- ============================================== -->
+        <!-- CHẾ ĐỘ AUTO SKILL (CHÈN VÀO PHẦN CHAT)          -->
+        <!-- ============================================== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="#152136"
+            android:orientation="vertical"
+            android:padding="10dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⚡ CHẾ ĐỘ AUTO (CHÈN SKILL VÀO CHAT)"
+                android:textColor="#f59e0b"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <!-- Nút Auto 30s -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnQuickSkill30s"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:backgroundTint="#d97706"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:text="⚡ Auto 30s"
+                    android:textColor="#ffffff"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    app:cornerRadius="8dp" />
+
+                <View
+                    android:layout_width="8dp"
+                    android:layout_height="1dp" />
+
+                <!-- Nút Auto 10-15s -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnQuickSkill1015s"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:backgroundTint="#b45309"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:text="⚡ Auto 10-15s"
+                    android:textColor="#ffffff"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    app:cornerRadius="8dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ============================================== -->
         <!-- MỤC 1: STUDIO TẠO VIDEO 15S - 20S - 30S (FAST) -->
         <!-- ============================================== -->
         <LinearLayout

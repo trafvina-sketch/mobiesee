@@ -718,6 +718,20 @@ class MainActivity : AppCompatActivity() {
             launchUniversalImagePicker()
         }
 
+        val btnQuickSkill30s = dialogView.findViewById<MaterialButton>(R.id.btnQuickSkill30s)
+        btnQuickSkill30s?.setOnClickListener {
+            dialog.dismiss()
+            webView.evaluateJavascript("window.duongThoInsertSkill && window.duongThoInsertSkill('30s');", null)
+            Toast.makeText(this, "⚡ Đã chèn Auto Skill 30s vào khung chat!", Toast.LENGTH_SHORT).show()
+        }
+
+        val btnQuickSkill1015s = dialogView.findViewById<MaterialButton>(R.id.btnQuickSkill1015s)
+        btnQuickSkill1015s?.setOnClickListener {
+            dialog.dismiss()
+            webView.evaluateJavascript("window.duongThoInsertSkill && window.duongThoInsertSkill('10-15s');", null)
+            Toast.makeText(this, "⚡ Đã chèn Auto Skill 10-15s vào khung chat!", Toast.LENGTH_SHORT).show()
+        }
+
         val switchAutoScan = dialogView.findViewById<SwitchMaterial>(R.id.switchAutoScan)
         val etCreatePrompt = dialogView.findViewById<EditText>(R.id.etCreatePrompt)
         val btnDuration15 = dialogView.findViewById<TextView>(R.id.btnDuration15)

@@ -5900,6 +5900,70 @@ if (typeof window !== 'undefined') {
     notifyAndroidCount();
   };
 
+  const SKILL_30S_DIRECTIVE = `[KÍCH HOẠT AUTOPILOT: DUONGTHO-30S - SEEDANCE 2.5]
+- Khóa cứng thời lượng 30 giây (duration: 30), model Seedance 2.5 (seedance_2.5). Một phân đoạn 30s liền mạch duy nhất.
+- Bảo toàn 100% prompt gốc và toàn bộ lời thoại nhân vật trong ngoặc kép "..." để tạo khẩu hình (lip-sync). Không tóm tắt, không viết lại.
+- Zero-Confirmation Autopilot: Bắt đầu tạo video ngay lập tức trong cùng lượt, không hỏi xác nhận.
+- Xử lý lỗi tức thì: Nếu 1 prompt gặp sự cố, lập tiếp tục tạo video bằng prompt kế tiếp, lưu lại các prompt lỗi để chạy lại 1 lần duy nhất ở cuối đợt.
+- Chỉ hiển thị video hoàn thành kèm nút tải về, tuyệt đối không hiển thị lại văn bản prompt.`;
+
+  const SKILL_10_15S_DIRECTIVE = `[KÍCH HOẠT AUTOPILOT: DUONGTHO-10S-15S - SEEDANCE 2.5]
+- Hỗ trợ thời lượng 10 giây và 15 giây (mặc định 15s), model Seedance 2.5 (seedance_2.5). Một phân đoạn liền mạch duy nhất.
+- Exact-Prompt Fidelity: Bảo toàn 100% văn bản prompt của người dùng, không tự ý viết lại hay thêm bớt.
+- Zero-Confirmation Autopilot: Bắt đầu tạo video ngay lập tức, không hỏi "confirm", "start" hay chờ đợi.
+- Chu kỳ mẻ liên tục: Chạy liên tục (20 video cho 10s, 10 video cho 15s). Gặp lỗi chuyển ngay sang prompt tiếp theo, không dừng luồng.
+- Chỉ hiển thị video hoàn thành kèm nút tải về, tuyệt đối không hiển thị lại văn bản prompt.`;
+
+  window.duongThoInsertSkill = function(type) {
+    const textToInsert = (type === '30s' || type === '30') ? SKILL_30S_DIRECTIVE : SKILL_10_15S_DIRECTIVE;
+    const modeName = (type === '30s' || type === '30') ? '30s' : '10-15s';
+    console.log('[DuongTho] Chèn Auto Skill: ' + modeName);
+
+    const editor = document.querySelector('#input-engine-container .tiptap, #input-engine-container [role="textbox"], .tiptap, .ProseMirror, textarea, [contenteditable="true"], input[type="text"]');
+    if (!editor) {
+      if (window.__showChannaNotice) window.__showChannaNotice('⚠️ Chưa tìm thấy ô nhập chat Dola! Hãy mở khung chat trước.');
+      return false;
+    }
+
+    editor.focus();
+    try {
+      if (editor.tagName === 'TEXTAREA' || editor.tagName === 'INPUT') {
+        const cur = editor.value || '';
+        editor.value = cur ? (cur + '\n\n' + textToInsert) : textToInsert;
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+        editor.dispatchEvent(new Event('change', { bubbles: true }));
+      } else {
+        // TipTap / ProseMirror rich editor
+        const existingText = (editor.innerText || editor.textContent || '').trim();
+        if (document.queryCommandSupported && document.queryCommandSupported('insertText')) {
+          if (!existingText) {
+            document.execCommand('selectAll', false, null);
+          } else {
+            document.execCommand('insertText', false, '\n\n');
+          }
+          document.execCommand('insertText', false, textToInsert);
+        } else {
+          editor.innerText = existingText ? (existingText + '\n\n' + textToInsert) : textToInsert;
+        }
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+        editor.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+
+      const msg = '⚡ Đã thêm Auto Skill ' + modeName + ' vào khung chat!';
+      if (window.AndroidDuongTho && typeof window.AndroidDuongTho.showToast === 'function') {
+        window.AndroidDuongTho.showToast(msg);
+      } else if (window.DuongThoAndroid && typeof window.DuongThoAndroid.showToast === 'function') {
+        window.DuongThoAndroid.showToast(msg);
+      } else if (window.__showChannaNotice) {
+        window.__showChannaNotice(msg);
+      }
+      return true;
+    } catch(e) {
+      console.error('[DuongTho] Lỗi chèn skill:', e);
+      return false;
+    }
+  };
+
   // ============================================================================
   // 🎨 DOLA EXTENSION THEME ENGINE & SMART FLOATING TOOLBAR
   // ============================================================================
@@ -6037,6 +6101,59 @@ if (typeof window !== 'undefined') {
       }
       .dola-ext-rescan-btn:hover {
         background: #0369a1 !important;
+      }
+
+      /* Nút Auto Skill */
+      .dola-ext-auto-btn {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(251, 191, 36, 0.5) !important;
+        font-weight: 800 !important;
+      }
+      .dola-ext-auto-btn:hover {
+        background: linear-gradient(135deg, #d97706 0%, #b45309 100%) !important;
+      }
+
+      /* Dropdown Menu Auto Skill */
+      #dola-auto-skill-popup {
+        position: fixed !important;
+        top: 48px !important;
+        right: 12px !important;
+        z-index: 999990 !important;
+        background: #18181b !important;
+        border: 1px solid rgba(255, 255, 255, 0.18) !important;
+        border-radius: 12px !important;
+        padding: 8px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 6px !important;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7) !important;
+        min-width: 230px !important;
+        backdrop-filter: blur(14px) !important;
+      }
+      .dola-skill-choice-btn {
+        background: rgba(255, 255, 255, 0.06) !important;
+        color: #f4f4f5 !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 8px !important;
+        padding: 8px 10px !important;
+        cursor: pointer !important;
+        text-align: left !important;
+        transition: all 0.2s ease !important;
+      }
+      .dola-skill-choice-btn:hover {
+        background: rgba(56, 189, 248, 0.2) !important;
+        border-color: #38bdf8 !important;
+      }
+      .dola-skill-choice-title {
+        font-size: 11.5px !important;
+        font-weight: 700 !important;
+        color: #38bdf8 !important;
+      }
+      .dola-skill-choice-sub {
+        font-size: 9.5px !important;
+        color: #94a3b8 !important;
+        margin-top: 2px !important;
       }
 
       /* Brand Tag / Logo */
@@ -6200,6 +6317,11 @@ if (typeof window !== 'undefined') {
         <span class="dola-ext-collapsed-only" style="font-size:10px;color:#94a3b8;margin-left:2px;">▼</span>
       </div>
 
+      <!-- Nút Auto Skill (Chọn 10-15s hoặc 30s) -->
+      <button id="dola-ext-auto-btn" class="dola-ext-btn dola-ext-auto-btn dola-ext-expanded-only" title="Chèn Prompt Auto Skill 30s hoặc 10-15s vào khung chat">
+        <span>⚡ Auto ▾</span>
+      </button>
+
       <!-- Nút Quét lại -->
       <button id="dola-ext-rescan-btn" class="dola-ext-btn dola-ext-rescan-btn dola-ext-expanded-only" title="Quét lại toàn bộ video trên trang">
         <svg id="dola-ext-rescan-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -6260,6 +6382,81 @@ if (typeof window !== 'undefined') {
         isBarCollapsed = true;
         localStorage.setItem('dola_ext_bar_collapsed', 'true');
         renderFloatingExtensionBar();
+      };
+    }
+
+    // Bấm nút Auto Skill để chọn 30s hoặc 10-15s
+    const autoBtn = bar.querySelector('#dola-ext-auto-btn');
+    if (autoBtn) {
+      autoBtn.onclick = (e) => {
+        e.stopPropagation();
+        let popup = document.getElementById('dola-auto-skill-popup');
+        if (popup) {
+          popup.remove();
+          return;
+        }
+
+        popup = document.createElement('div');
+        popup.id = 'dola-auto-skill-popup';
+        popup.innerHTML = `
+          <div style="font-size:11px;font-weight:700;color:#cbd5e1;padding:2px 4px 6px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:space-between;">
+            <span>⚡ CHỌN CHẾ ĐỘ AUTO SKILL</span>
+            <span id="dola-close-skill-popup" style="cursor:pointer;color:#94a3b8;font-size:13px;padding:0 4px;">✕</span>
+          </div>
+          <button id="dola-choose-skill-30s" class="dola-skill-choice-btn">
+            <div class="dola-skill-choice-title">⚡ Skill 1: Auto 30s (Seedance 2.5)</div>
+            <div class="dola-skill-choice-sub">Khóa cứng 30s • Giữ 100% lời thoại lip-sync • Tự chạy liên tục</div>
+          </button>
+          <button id="dola-choose-skill-1015s" class="dola-skill-choice-btn">
+            <div class="dola-skill-choice-title">⚡ Skill 2: Auto 10-15s (Seedance 2.5)</div>
+            <div class="dola-skill-choice-sub">Độ dài 10s & 15s • Exact-Prompt • Chạy chu kỳ mẻ không hỏi lại</div>
+          </button>
+        `;
+        document.body.appendChild(popup);
+
+        // Nút tắt
+        const closeBtn = popup.querySelector('#dola-close-skill-popup');
+        if (closeBtn) {
+          closeBtn.onclick = (ev) => {
+            ev.stopPropagation();
+            popup.remove();
+          };
+        }
+
+        // Bấm chọn Skill 30s
+        const btn30s = popup.querySelector('#dola-choose-skill-30s');
+        if (btn30s) {
+          btn30s.onclick = (ev) => {
+            ev.stopPropagation();
+            if (typeof window.duongThoInsertSkill === 'function') {
+              window.duongThoInsertSkill('30s');
+            }
+            popup.remove();
+          };
+        }
+
+        // Bấm chọn Skill 10-15s
+        const btn1015s = popup.querySelector('#dola-choose-skill-1015s');
+        if (btn1015s) {
+          btn1015s.onclick = (ev) => {
+            ev.stopPropagation();
+            if (typeof window.duongThoInsertSkill === 'function') {
+              window.duongThoInsertSkill('10-15s');
+            }
+            popup.remove();
+          };
+        }
+
+        // Đóng khi click ngoài
+        const onOutsideClick = (ev) => {
+          if (!popup.contains(ev.target) && ev.target !== autoBtn) {
+            popup.remove();
+            document.removeEventListener('click', onOutsideClick);
+          }
+        };
+        setTimeout(() => {
+          document.addEventListener('click', onOutsideClick);
+        }, 50);
       };
     }
 
