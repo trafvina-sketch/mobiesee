@@ -9,7 +9,8 @@ import java.security.spec.X509EncodedKeySpec
 
 object License {
     // 🔑 Dán chuỗi PUBLIC_KEY_B64 in ra từ script Python/Server vào đây:
-    private const val PUBLIC_KEY_B64 = "DÁN_PUBLIC_KEY_Ở_ĐÂY"
+    private const val PUBLIC_KEY_B64 =
+        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3AAz7JhE9wDwTjRLYcQVPg8+owb4dGvnMDcnsXFMLZsmE9PCmzh4bruFNyv5e6A7fmhictdGSTRh7po90O6rrqkiUIhoj5mI92x+sHM+cIG4F5eho2cUUXhOf0sBi3uejynl8XHrU9zJj11kw4BH4VHKKPd0kAAB/z9elFSg12lnNjbMXErPwhpaHZq87JM9/gA/ARBsELKQSYBcRQOdRqbeFoWyN9m/rJheyWRv7F78f6rRVzJFefx5cHrRRfLmhO2AS2tUaJMvlO0nalOI2/sRxFvs6sOugfMUqC7dhzClK41k7I1iO4zyfjy53g7krHMN0tDgSAQTJL6YAtLx8wIDAQAB"
 
     private const val PREFS = "license_prefs"
     private const val KEY_SAVED = "activation_key"
