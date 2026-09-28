@@ -6317,8 +6317,8 @@ if (typeof window !== 'undefined') {
         <span class="dola-ext-collapsed-only" style="font-size:10px;color:#94a3b8;margin-left:2px;">▼</span>
       </div>
 
-      <!-- Nút Auto Skill (Chọn 10-15s hoặc 30s) -->
-      <button id="dola-ext-auto-btn" class="dola-ext-btn dola-ext-auto-btn dola-ext-expanded-only" title="Chèn Prompt Auto Skill 30s hoặc 10-15s vào khung chat">
+      <!-- Nút Auto Skill (Chọn 10-15s hoặc 30s) - LUÔN HIỆN kể cả khi thu gọn -->
+      <button id="dola-ext-auto-btn" class="dola-ext-btn dola-ext-auto-btn" title="Chèn Prompt Auto Skill 30s hoặc 10-15s vào khung chat">
         <span>⚡ Auto ▾</span>
       </button>
 
