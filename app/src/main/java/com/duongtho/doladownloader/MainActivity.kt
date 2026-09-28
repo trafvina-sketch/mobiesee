@@ -915,50 +915,90 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ⚡ Helper: Hoàn tất quy trình gắn file SKILL.md vào Dola chat
+    // ⚡ Helper: Set pendingSkillFile + Click nút "+" → "Tải tập tin" của Dola
     private fun continueAttachSkill(skillFile: File, displayName: String) {
         runOnUiThread {
             try {
-                // Tạo URI từ FileProvider
+                // 1. Tạo URI từ FileProvider
                 val skillUri = androidx.core.content.FileProvider.getUriForFile(
                     this, "$packageName.fileprovider", skillFile
                 )
                 pendingSkillFile = skillUri
 
-                // Trigger Dola's file input qua JS
+                // 2. Click nút "+" rồi "Tải tập tin hoặc hình ảnh lên" trong Dola
                 val js = """
-                    (function() {
-                        // Tìm nút đính kèm file / upload của Dola
-                        var fileInput = document.querySelector('input[type="file"]');
-                        if (fileInput) {
-                            fileInput.click();
-                            return 'clicked_input';
+                    (async function() {
+                        try {
+                            // Tìm nút "+" ở dưới cùng của Dola chat
+                            var plusBtn = null;
+                            var allBtns = document.querySelectorAll('button, div[role="button"]');
+                            for (var i = 0; i < allBtns.length; i++) {
+                                var b = allBtns[i];
+                                var t = (b.textContent || '').trim();
+                                if (t === '+' || t === '＋') { plusBtn = b; break; }
+                            }
+                            if (!plusBtn) {
+                                // Tìm nút + gần khu vực input-engine
+                                var container = document.querySelector('#input-engine-container, .chat-input-container, [class*="composer"]');
+                                if (container) {
+                                    var btns = container.querySelectorAll('button');
+                                    for (var j = 0; j < btns.length; j++) {
+                                        var svg = btns[j].querySelector('svg');
+                                        var text = (btns[j].textContent || '').trim();
+                                        if (text === '+' || (svg && text.length <= 2)) {
+                                            plusBtn = btns[j];
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if (plusBtn) {
+                                plusBtn.click();
+                                console.log('[DuongTho] ✅ Đã click nút +');
+                                await new Promise(r => setTimeout(r, 500));
+                                
+                                // Tìm "Tải tập tin hoặc hình ảnh lên" trong popup menu
+                                var allEls = document.querySelectorAll('button, div, li, a, span, p, [role="menuitem"], [role="option"]');
+                                var uploadItem = null;
+                                for (var k = 0; k < allEls.length; k++) {
+                                    var el = allEls[k];
+                                    var txt = (el.textContent || '').trim();
+                                    if (txt.indexOf('Tải tập tin') >= 0 || txt.indexOf('Upload file') >= 0 || txt.indexOf('tập tin hoặc hình ảnh') >= 0) {
+                                        uploadItem = el;
+                                        break;
+                                    }
+                                }
+                                if (uploadItem) {
+                                    uploadItem.click();
+                                    console.log('[DuongTho] ✅ Đã click "Tải tập tin hoặc hình ảnh lên"');
+                                    return 'clicked_upload';
+                                } else {
+                                    // Fallback: tìm input[type=file] sau khi mở menu
+                                    var fi = document.querySelector('input[type="file"]');
+                                    if (fi) { fi.click(); return 'clicked_file_input'; }
+                                    console.warn('[DuongTho] Không tìm thấy mục Tải tập tin');
+                                    return 'upload_not_found';
+                                }
+                            } else {
+                                console.warn('[DuongTho] Không tìm thấy nút +');
+                                return 'plus_not_found';
+                            }
+                        } catch(e) {
+                            console.error('[DuongTho] Lỗi:', e);
+                            return 'error';
                         }
-                        // Tìm nút attach/upload button
-                        var uploadBtn = document.querySelector('[data-testid="upload-button"], [aria-label*="upload"], [aria-label*="attach"], [aria-label*="file"], .upload-btn, .attach-btn, button[class*="upload"], button[class*="attach"]');
-                        if (uploadBtn) {
-                            uploadBtn.click();
-                            return 'clicked_btn';
-                        }
-                        // Tạo file input ẩn và trigger
-                        var inp = document.createElement('input');
-                        inp.type = 'file';
-                        inp.accept = '.md,.txt,text/markdown,text/plain';
-                        inp.style.display = 'none';
-                        document.body.appendChild(inp);
-                        inp.click();
-                        return 'created_input';
                     })();
                 """.trimIndent()
                 webView.evaluateJavascript(js) { result ->
-                    android.util.Log.d("DuongTho", "Skill file trigger result: $result for $displayName")
+                    android.util.Log.d("DuongTho", "Skill upload trigger: $result for $displayName")
                 }
 
-                Toast.makeText(this, "⚡ Đang gắn file $displayName vào chat Dola...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "⚡ Đang gửi file $displayName...", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 e.printStackTrace()
                 pendingSkillFile = null
-                Toast.makeText(this, "⚠️ Lỗi gắn file: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "⚠️ Lỗi: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
