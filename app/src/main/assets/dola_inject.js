@@ -6541,25 +6541,34 @@ During autopilot, the ONLY things the user should see in chat are: NotifyHuman v
           };
         }
 
-        // Bấm chọn Skill 30s
+        // Bấm chọn Skill 30s → Gắn file SKILL.md thật vào chat
         const btn30s = popup.querySelector('#dola-choose-skill-30s');
         if (btn30s) {
           btn30s.onclick = (ev) => {
             ev.stopPropagation();
-            if (typeof window.duongThoInsertSkill === 'function') {
-              window.duongThoInsertSkill('30s');
+            // Ưu tiên gắn file .md qua Android bridge
+            if (window.AndroidDuongTho && typeof window.AndroidDuongTho.attachSkillFile === 'function') {
+              window.AndroidDuongTho.attachSkillFile('30s');
+            } else if (window.DuongThoAndroid && typeof window.DuongThoAndroid.attachSkillFile === 'function') {
+              window.DuongThoAndroid.attachSkillFile('30s');
+            } else if (typeof window.duongThoInsertSkill === 'function') {
+              window.duongThoInsertSkill('30s'); // Fallback paste text
             }
             popup.remove();
           };
         }
 
-        // Bấm chọn Skill 10-15s
+        // Bấm chọn Skill 10-15s → Gắn file SKILL.md thật vào chat
         const btn1015s = popup.querySelector('#dola-choose-skill-1015s');
         if (btn1015s) {
           btn1015s.onclick = (ev) => {
             ev.stopPropagation();
-            if (typeof window.duongThoInsertSkill === 'function') {
-              window.duongThoInsertSkill('10-15s');
+            if (window.AndroidDuongTho && typeof window.AndroidDuongTho.attachSkillFile === 'function') {
+              window.AndroidDuongTho.attachSkillFile('10-15s');
+            } else if (window.DuongThoAndroid && typeof window.DuongThoAndroid.attachSkillFile === 'function') {
+              window.DuongThoAndroid.attachSkillFile('10-15s');
+            } else if (typeof window.duongThoInsertSkill === 'function') {
+              window.duongThoInsertSkill('10-15s'); // Fallback paste text
             }
             popup.remove();
           };

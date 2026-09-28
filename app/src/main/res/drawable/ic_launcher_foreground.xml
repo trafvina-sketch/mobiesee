@@ -5,182 +5,192 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Ambient Glow behind puppy -->
-    <path
-        android:pathData="M54,54 m-28,0 a28,28 0 1,1 56,0 a28,28 0 1,1 -56,0"
-        android:fillColor="#26a855f7" />
-    <path
-        android:pathData="M54,54 m-20,0 a20,20 0 1,1 40,0 a20,20 0 1,1 -40,0"
-        android:fillColor="#2606b6d4" />
+    <!-- Wrap everything in a group scaled to fit adaptive icon safe zone (66dp in 108dp) -->
+    <group
+        android:scaleX="0.65"
+        android:scaleY="0.65"
+        android:pivotX="54"
+        android:pivotY="54"
+        android:translateY="2">
 
-    <!-- Puppy Ears (Behind Head) -->
-    <!-- Left Ear -->
-    <path
-        android:pathData="M38,40 C31,38 27,47 28,56 C29,62 35,66 40,60 C42,56 42,44 38,40 Z"
-        android:fillColor="#f1f5f9" />
-    <path
-        android:pathData="M36,44 C32,43 30,49 31,54 C32,58 35,60 38,57 C39,54 39,46 36,44 Z"
-        android:fillColor="#f472b6" />
+        <!-- Ambient Glow behind puppy -->
+        <path
+            android:pathData="M54,54 m-28,0 a28,28 0 1,1 56,0 a28,28 0 1,1 -56,0"
+            android:fillColor="#26a855f7" />
+        <path
+            android:pathData="M54,54 m-20,0 a20,20 0 1,1 40,0 a20,20 0 1,1 -40,0"
+            android:fillColor="#2606b6d4" />
 
-    <!-- Right Ear -->
-    <path
-        android:pathData="M70,40 C77,38 81,47 80,56 C79,62 73,66 68,60 C66,56 66,44 70,40 Z"
-        android:fillColor="#f1f5f9" />
-    <path
-        android:pathData="M72,44 C76,43 78,49 77,54 C76,58 73,60 70,57 C69,54 69,46 72,44 Z"
-        android:fillColor="#f472b6" />
+        <!-- Puppy Ears (Behind Head) -->
+        <!-- Left Ear -->
+        <path
+            android:pathData="M38,40 C31,38 27,47 28,56 C29,62 35,66 40,60 C42,56 42,44 38,40 Z"
+            android:fillColor="#f1f5f9" />
+        <path
+            android:pathData="M36,44 C32,43 30,49 31,54 C32,58 35,60 38,57 C39,54 39,46 36,44 Z"
+            android:fillColor="#f472b6" />
 
-    <!-- Headphone Arch (Behind head) -->
-    <path
-        android:pathData="M30,52 C30,38 41,28 54,28 C67,28 78,38 78,52"
-        android:strokeColor="#10b981"
-        android:strokeWidth="5"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M30,52 C30,38 41,28 54,28 C67,28 78,38 78,52"
-        android:strokeColor="#ffffff"
-        android:strokeWidth="1.2"
-        android:strokeLineCap="round"
-        android:strokeAlpha="0.5" />
+        <!-- Right Ear -->
+        <path
+            android:pathData="M70,40 C77,38 81,47 80,56 C79,62 73,66 68,60 C66,56 66,44 70,40 Z"
+            android:fillColor="#f1f5f9" />
+        <path
+            android:pathData="M72,44 C76,43 78,49 77,54 C76,58 73,60 70,57 C69,54 69,46 72,44 Z"
+            android:fillColor="#f472b6" />
 
-    <!-- Puppy Body / Chest -->
-    <path
-        android:pathData="M54,82 C40,82 34,74 34,68 C34,64 42,60 54,60 C66,60 74,64 74,68 C74,74 68,82 54,82 Z"
-        android:fillColor="#e2e8f0" />
-    <path
-        android:pathData="M54,79 C46,79 42,74 42,70 C42,67 47,64 54,64 C61,64 66,67 66,70 C66,74 62,79 54,79 Z"
-        android:fillColor="#ffffff" />
+        <!-- Headphone Arch (Behind head) -->
+        <path
+            android:pathData="M30,52 C30,38 41,28 54,28 C67,28 78,38 78,52"
+            android:strokeColor="#10b981"
+            android:strokeWidth="5"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M30,52 C30,38 41,28 54,28 C67,28 78,38 78,52"
+            android:strokeColor="#ffffff"
+            android:strokeWidth="1.2"
+            android:strokeLineCap="round"
+            android:strokeAlpha="0.5" />
 
-    <!-- Puppy Head -->
-    <path
-        android:pathData="M54,54 m-23,0 a23,21 0 1,1 46,0 a23,21 0 1,1 -46,0"
-        android:fillColor="#f8fafc" />
+        <!-- Puppy Body / Chest -->
+        <path
+            android:pathData="M54,82 C40,82 34,74 34,68 C34,64 42,60 54,60 C66,60 74,64 74,68 C74,74 68,82 54,82 Z"
+            android:fillColor="#e2e8f0" />
+        <path
+            android:pathData="M54,79 C46,79 42,74 42,70 C42,67 47,64 54,64 C61,64 66,67 66,70 C66,74 62,79 54,79 Z"
+            android:fillColor="#ffffff" />
 
-    <!-- Chubby Cheeks -->
-    <path
-        android:pathData="M40,58 m-8,0 a8,8 0 1,1 16,0 a8,8 0 1,1 -16,0"
-        android:fillColor="#f8fafc" />
-    <path
-        android:pathData="M68,58 m-8,0 a8,8 0 1,1 16,0 a8,8 0 1,1 -16,0"
-        android:fillColor="#f8fafc" />
+        <!-- Puppy Head -->
+        <path
+            android:pathData="M54,54 m-23,0 a23,21 0 1,1 46,0 a23,21 0 1,1 -46,0"
+            android:fillColor="#f8fafc" />
 
-    <!-- Cute Pastel Pink Blushing Cheeks -->
-    <path
-        android:pathData="M41,61 m-5,0 a5,3 0 1,1 10,0 a5,3 0 1,1 -10,0"
-        android:fillColor="#f472b6"
-        android:fillAlpha="0.55" />
-    <path
-        android:pathData="M67,61 m-5,0 a5,3 0 1,1 10,0 a5,3 0 1,1 -10,0"
-        android:fillColor="#f472b6"
-        android:fillAlpha="0.55" />
+        <!-- Chubby Cheeks -->
+        <path
+            android:pathData="M40,58 m-8,0 a8,8 0 1,1 16,0 a8,8 0 1,1 -16,0"
+            android:fillColor="#f8fafc" />
+        <path
+            android:pathData="M68,58 m-8,0 a8,8 0 1,1 16,0 a8,8 0 1,1 -16,0"
+            android:fillColor="#f8fafc" />
 
-    <!-- Sparkling Big Eyes -->
-    <!-- Left Eye -->
-    <path
-        android:pathData="M44,53 m-4,0 a4,5 0 1,1 8,0 a4,5 0 1,1 -8,0"
-        android:fillColor="#0f172a" />
-    <path
-        android:pathData="M43,51.5 m-1.8,0 a1.8,2.2 0 1,1 3.6,0 a1.8,2.2 0 1,1 -3.6,0"
-        android:fillColor="#ffffff" />
-    <path
-        android:pathData="M45.5,54.5 m-1,0 a1,1 0 1,1 2,0 a1,1 0 1,1 -2,0"
-        android:fillColor="#38bdf8" />
+        <!-- Cute Pastel Pink Blushing Cheeks -->
+        <path
+            android:pathData="M41,61 m-5,0 a5,3 0 1,1 10,0 a5,3 0 1,1 -10,0"
+            android:fillColor="#f472b6"
+            android:fillAlpha="0.55" />
+        <path
+            android:pathData="M67,61 m-5,0 a5,3 0 1,1 10,0 a5,3 0 1,1 -10,0"
+            android:fillColor="#f472b6"
+            android:fillAlpha="0.55" />
 
-    <!-- Right Eye -->
-    <path
-        android:pathData="M64,53 m-4,0 a4,5 0 1,1 8,0 a4,5 0 1,1 -8,0"
-        android:fillColor="#0f172a" />
-    <path
-        android:pathData="M63,51.5 m-1.8,0 a1.8,2.2 0 1,1 3.6,0 a1.8,2.2 0 1,1 -3.6,0"
-        android:fillColor="#ffffff" />
-    <path
-        android:pathData="M65.5,54.5 m-1,0 a1,1 0 1,1 2,0 a1,1 0 1,1 -2,0"
-        android:fillColor="#38bdf8" />
+        <!-- Sparkling Big Eyes -->
+        <!-- Left Eye -->
+        <path
+            android:pathData="M44,53 m-4,0 a4,5 0 1,1 8,0 a4,5 0 1,1 -8,0"
+            android:fillColor="#0f172a" />
+        <path
+            android:pathData="M43,51.5 m-1.8,0 a1.8,2.2 0 1,1 3.6,0 a1.8,2.2 0 1,1 -3.6,0"
+            android:fillColor="#ffffff" />
+        <path
+            android:pathData="M45.5,54.5 m-1,0 a1,1 0 1,1 2,0 a1,1 0 1,1 -2,0"
+            android:fillColor="#38bdf8" />
 
-    <!-- Eyebrows -->
-    <path
-        android:pathData="M41,47 C43,46 46,46 47,47"
-        android:strokeColor="#94a3b8"
-        android:strokeWidth="1.2"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M61,47 C62,46 65,46 67,47"
-        android:strokeColor="#94a3b8"
-        android:strokeWidth="1.2"
-        android:strokeLineCap="round" />
+        <!-- Right Eye -->
+        <path
+            android:pathData="M64,53 m-4,0 a4,5 0 1,1 8,0 a4,5 0 1,1 -8,0"
+            android:fillColor="#0f172a" />
+        <path
+            android:pathData="M63,51.5 m-1.8,0 a1.8,2.2 0 1,1 3.6,0 a1.8,2.2 0 1,1 -3.6,0"
+            android:fillColor="#ffffff" />
+        <path
+            android:pathData="M65.5,54.5 m-1,0 a1,1 0 1,1 2,0 a1,1 0 1,1 -2,0"
+            android:fillColor="#38bdf8" />
 
-    <!-- Button Nose -->
-    <path
-        android:pathData="M52,58 C52,57 56,57 56,58 C56,60 54,61 54,61 C54,61 52,60 52,58 Z"
-        android:fillColor="#334155" />
-    <path
-        android:pathData="M53.5,58 m-0.7,0 a0.7,0.5 0 1,1 1.4,0 a0.7,0.5 0 1,1 -1.4,0"
-        android:fillColor="#ffffff" />
+        <!-- Eyebrows -->
+        <path
+            android:pathData="M41,47 C43,46 46,46 47,47"
+            android:strokeColor="#94a3b8"
+            android:strokeWidth="1.2"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M61,47 C62,46 65,46 67,47"
+            android:strokeColor="#94a3b8"
+            android:strokeWidth="1.2"
+            android:strokeLineCap="round" />
 
-    <!-- Happy Smile Line -->
-    <path
-        android:pathData="M54,61 L54,63 M51,63 C52.5,65 54,65 54,63 C54,65 55.5,65 57,63"
-        android:strokeColor="#334155"
-        android:strokeWidth="1"
-        android:strokeLineCap="round" />
+        <!-- Button Nose -->
+        <path
+            android:pathData="M52,58 C52,57 56,57 56,58 C56,60 54,61 54,61 C54,61 52,60 52,58 Z"
+            android:fillColor="#334155" />
+        <path
+            android:pathData="M53.5,58 m-0.7,0 a0.7,0.5 0 1,1 1.4,0 a0.7,0.5 0 1,1 -1.4,0"
+            android:fillColor="#ffffff" />
 
-    <!-- Playful Tongue -->
-    <path
-        android:pathData="M52.8,64 C52.8,66.5 55.2,66.5 55.2,64 Z"
-        android:fillColor="#fb7185" />
+        <!-- Happy Smile Line -->
+        <path
+            android:pathData="M54,61 L54,63 M51,63 C52.5,65 54,65 54,63 C54,65 55.5,65 57,63"
+            android:strokeColor="#334155"
+            android:strokeWidth="1"
+            android:strokeLineCap="round" />
 
-    <!-- Tech Over-Ear Headphones -->
-    <!-- Left Earcup -->
-    <path
-        android:pathData="M24,46 L30,46 A4,4 0 0,1 34,50 L34,60 A4,4 0 0,1 30,64 L24,64 A4,4 0 0,1 20,60 L20,50 A4,4 0 0,1 24,46 Z"
-        android:fillColor="#14b8a6" />
-    <path
-        android:pathData="M25,48 L29,48 A2,2 0 0,1 31,50 L31,60 A2,2 0 0,1 29,62 L25,62 A2,2 0 0,1 23,60 L23,50 A2,2 0 0,1 25,48 Z"
-        android:fillColor="#0f172a" />
-    <path
-        android:pathData="M27,55 m-2.5,0 a2.5,2.5 0 1,1 5,0 a2.5,2.5 0 1,1 -5,0"
-        android:fillColor="#c084fc" />
+        <!-- Playful Tongue -->
+        <path
+            android:pathData="M52.8,64 C52.8,66.5 55.2,66.5 55.2,64 Z"
+            android:fillColor="#fb7185" />
 
-    <!-- Right Earcup -->
-    <path
-        android:pathData="M78,46 L84,46 A4,4 0 0,1 88,50 L88,60 A4,4 0 0,1 84,64 L78,64 A4,4 0 0,1 74,60 L74,50 A4,4 0 0,1 78,46 Z"
-        android:fillColor="#14b8a6" />
-    <path
-        android:pathData="M79,48 L83,48 A2,2 0 0,1 85,50 L85,60 A2,2 0 0,1 83,62 L79,62 A2,2 0 0,1 77,60 L77,50 A2,2 0 0,1 79,48 Z"
-        android:fillColor="#0f172a" />
-    <path
-        android:pathData="M81,55 m-2.5,0 a2.5,2.5 0 1,1 5,0 a2.5,2.5 0 1,1 -5,0"
-        android:fillColor="#c084fc" />
+        <!-- Tech Over-Ear Headphones -->
+        <!-- Left Earcup -->
+        <path
+            android:pathData="M24,46 L30,46 A4,4 0 0,1 34,50 L34,60 A4,4 0 0,1 30,64 L24,64 A4,4 0 0,1 20,60 L20,50 A4,4 0 0,1 24,46 Z"
+            android:fillColor="#14b8a6" />
+        <path
+            android:pathData="M25,48 L29,48 A2,2 0 0,1 31,50 L31,60 A2,2 0 0,1 29,62 L25,62 A2,2 0 0,1 23,60 L23,50 A2,2 0 0,1 25,48 Z"
+            android:fillColor="#0f172a" />
+        <path
+            android:pathData="M27,55 m-2.5,0 a2.5,2.5 0 1,1 5,0 a2.5,2.5 0 1,1 -5,0"
+            android:fillColor="#c084fc" />
 
-    <!-- Mini Download Badge in Chest -->
-    <path
-        android:pathData="M43,73 L65,73 A4,4 0 0,1 69,77 L69,79 A4,4 0 0,1 65,83 L43,83 A4,4 0 0,1 39,79 L39,77 A4,4 0 0,1 43,73 Z"
-        android:fillColor="#090d16"
-        android:strokeColor="#a855f7"
-        android:strokeWidth="1.2" />
+        <!-- Right Earcup -->
+        <path
+            android:pathData="M78,46 L84,46 A4,4 0 0,1 88,50 L88,60 A4,4 0 0,1 84,64 L78,64 A4,4 0 0,1 74,60 L74,50 A4,4 0 0,1 78,46 Z"
+            android:fillColor="#14b8a6" />
+        <path
+            android:pathData="M79,48 L83,48 A2,2 0 0,1 85,50 L85,60 A2,2 0 0,1 83,62 L79,62 A2,2 0 0,1 77,60 L77,50 A2,2 0 0,1 79,48 Z"
+            android:fillColor="#0f172a" />
+        <path
+            android:pathData="M81,55 m-2.5,0 a2.5,2.5 0 1,1 5,0 a2.5,2.5 0 1,1 -5,0"
+            android:fillColor="#c084fc" />
 
-    <!-- Arrow in badge -->
-    <path
-        android:pathData="M54,75 L54,80 M51.5,78 L54,80.5 L56.5,78"
-        android:strokeColor="#34d399"
-        android:strokeWidth="1.2"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
+        <!-- Mini Download Badge in Chest -->
+        <path
+            android:pathData="M43,73 L65,73 A4,4 0 0,1 69,77 L69,79 A4,4 0 0,1 65,83 L43,83 A4,4 0 0,1 39,79 L39,77 A4,4 0 0,1 43,73 Z"
+            android:fillColor="#090d16"
+            android:strokeColor="#a855f7"
+            android:strokeWidth="1.2" />
 
-    <!-- Little Paws Holding Badge -->
-    <path
-        android:pathData="M40,78 m-3.5,0 a3.5,3 0 1,1 7,0 a3.5,3 0 1,1 -7,0"
-        android:fillColor="#ffffff" />
-    <path
-        android:pathData="M68,78 m-3.5,0 a3.5,3 0 1,1 7,0 a3.5,3 0 1,1 -7,0"
-        android:fillColor="#ffffff" />
+        <!-- Arrow in badge -->
+        <path
+            android:pathData="M54,75 L54,80 M51.5,78 L54,80.5 L56.5,78"
+            android:strokeColor="#34d399"
+            android:strokeWidth="1.2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
 
-    <!-- Sparkles -->
-    <path
-        android:pathData="M27,33 L28,30 L29,33 L32,34 L29,35 L28,38 L27,35 L24,34 Z"
-        android:fillColor="#34d399" />
-    <path
-        android:pathData="M81,31 L82,28 L83,31 L86,32 L83,33 L82,36 L81,33 L78,32 Z"
-        android:fillColor="#c084fc" />
+        <!-- Little Paws Holding Badge -->
+        <path
+            android:pathData="M40,78 m-3.5,0 a3.5,3 0 1,1 7,0 a3.5,3 0 1,1 -7,0"
+            android:fillColor="#ffffff" />
+        <path
+            android:pathData="M68,78 m-3.5,0 a3.5,3 0 1,1 7,0 a3.5,3 0 1,1 -7,0"
+            android:fillColor="#ffffff" />
+
+        <!-- Sparkles -->
+        <path
+            android:pathData="M27,33 L28,30 L29,33 L32,34 L29,35 L28,38 L27,35 L24,34 Z"
+            android:fillColor="#34d399" />
+        <path
+            android:pathData="M81,31 L82,28 L83,31 L86,32 L83,33 L82,36 L81,33 L78,32 Z"
+            android:fillColor="#c084fc" />
+
+    </group>
 
 </vector>

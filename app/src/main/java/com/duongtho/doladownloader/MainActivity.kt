@@ -54,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private var injectJsCode: String = ""
     private var detectedCount: Int = 0
     private var isAutoScanEnabled: Boolean = true
+    private var pendingSkillFile: Uri? = null // Auto-attach SKILL.md file
 
     // Kéo thả icon nổi (Drag & Drop)
     private var dX = 0f
@@ -528,6 +529,15 @@ class MainActivity : AppCompatActivity() {
                 fileUploadCallback?.onReceiveValue(null)
                 fileUploadCallback = filePathCallback
 
+                // ⚡ Auto-attach SKILL.md file nếu có pending từ nút Auto
+                val skillUri = pendingSkillFile
+                if (skillUri != null) {
+                    pendingSkillFile = null
+                    fileUploadCallback?.onReceiveValue(arrayOf(skillUri))
+                    fileUploadCallback = null
+                    return true
+                }
+
                 try {
                     val intent = fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply {
                         type = "image/*"
@@ -721,15 +731,37 @@ class MainActivity : AppCompatActivity() {
         val btnQuickSkill30s = dialogView.findViewById<MaterialButton>(R.id.btnQuickSkill30s)
         btnQuickSkill30s?.setOnClickListener {
             dialog.dismiss()
-            webView.evaluateJavascript("window.duongThoInsertSkill && window.duongThoInsertSkill('30s');", null)
-            Toast.makeText(this, "⚡ Đã chèn Auto Skill 30s vào khung chat!", Toast.LENGTH_SHORT).show()
+            // Gắn file SKILL.md thật vào chat Dola
+            try {
+                val cacheDir = File(cacheDir, "skills")
+                cacheDir.mkdirs()
+                val skillFile = File(cacheDir, "DuongTho-30s-SKILL.md")
+                val inputStream = assets.open("skill_30s.md")
+                skillFile.writeText(inputStream.bufferedReader().use { it.readText() })
+                inputStream.close()
+                continueAttachSkill(skillFile, "DuongTho-30s-SKILL.md")
+            } catch (e: Exception) {
+                // Fallback: paste text
+                webView.evaluateJavascript("window.duongThoInsertSkill && window.duongThoInsertSkill('30s');", null)
+                Toast.makeText(this, "⚡ Đã chèn Auto Skill 30s vào khung chat!", Toast.LENGTH_SHORT).show()
+            }
         }
 
         val btnQuickSkill1015s = dialogView.findViewById<MaterialButton>(R.id.btnQuickSkill1015s)
         btnQuickSkill1015s?.setOnClickListener {
             dialog.dismiss()
-            webView.evaluateJavascript("window.duongThoInsertSkill && window.duongThoInsertSkill('10-15s');", null)
-            Toast.makeText(this, "⚡ Đã chèn Auto Skill 10-15s vào khung chat!", Toast.LENGTH_SHORT).show()
+            try {
+                val cacheDir = File(cacheDir, "skills")
+                cacheDir.mkdirs()
+                val skillFile = File(cacheDir, "DuongTho-10s-15s-SKILL.md")
+                val inputStream = assets.open("skill_10_15s.md")
+                skillFile.writeText(inputStream.bufferedReader().use { it.readText() })
+                inputStream.close()
+                continueAttachSkill(skillFile, "DuongTho-10s-15s-SKILL.md")
+            } catch (e: Exception) {
+                webView.evaluateJavascript("window.duongThoInsertSkill && window.duongThoInsertSkill('10-15s');", null)
+                Toast.makeText(this, "⚡ Đã chèn Auto Skill 10-15s vào khung chat!", Toast.LENGTH_SHORT).show()
+            }
         }
 
         val switchAutoScan = dialogView.findViewById<SwitchMaterial>(R.id.switchAutoScan)
@@ -904,6 +936,54 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ⚡ Helper: Hoàn tất quy trình gắn file SKILL.md vào Dola chat
+    private fun continueAttachSkill(skillFile: File, displayName: String) {
+        runOnUiThread {
+            try {
+                // Tạo URI từ FileProvider
+                val skillUri = androidx.core.content.FileProvider.getUriForFile(
+                    this, "$packageName.fileprovider", skillFile
+                )
+                pendingSkillFile = skillUri
+
+                // Trigger Dola's file input qua JS
+                val js = """
+                    (function() {
+                        // Tìm nút đính kèm file / upload của Dola
+                        var fileInput = document.querySelector('input[type="file"]');
+                        if (fileInput) {
+                            fileInput.click();
+                            return 'clicked_input';
+                        }
+                        // Tìm nút attach/upload button
+                        var uploadBtn = document.querySelector('[data-testid="upload-button"], [aria-label*="upload"], [aria-label*="attach"], [aria-label*="file"], .upload-btn, .attach-btn, button[class*="upload"], button[class*="attach"]');
+                        if (uploadBtn) {
+                            uploadBtn.click();
+                            return 'clicked_btn';
+                        }
+                        // Tạo file input ẩn và trigger
+                        var inp = document.createElement('input');
+                        inp.type = 'file';
+                        inp.accept = '.md,.txt,text/markdown,text/plain';
+                        inp.style.display = 'none';
+                        document.body.appendChild(inp);
+                        inp.click();
+                        return 'created_input';
+                    })();
+                """.trimIndent()
+                webView.evaluateJavascript(js) { result ->
+                    android.util.Log.d("DuongTho", "Skill file trigger result: $result for $displayName")
+                }
+
+                Toast.makeText(this, "⚡ Đang gắn file $displayName vào chat Dola...", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                pendingSkillFile = null
+                Toast.makeText(this, "⚠️ Lỗi gắn file: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     inner class DuongThoBridge {
 
         @JavascriptInterface
@@ -989,6 +1069,52 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun getSavedTheme(): String {
             return prefs.getString("extension_theme", "native") ?: "native"
+        }
+
+        @JavascriptInterface
+        fun attachSkillFile(type: String) {
+            runOnUiThread {
+                try {
+                    // Xác định tên file SKILL.md
+                    val assetName = if (type == "30s") "DuongTho-30s-SKILL.md" else "DuongTho-10s-15s-SKILL.md"
+                    val sourceAsset = if (type == "30s") "skill_30s.md" else "skill_10_15s.md"
+
+                    // Lưu SKILL.md content từ JS vào cache file
+                    val cacheDir = File(cacheDir, "skills")
+                    cacheDir.mkdirs()
+                    val skillFile = File(cacheDir, assetName)
+
+                    // Đọc nội dung từ assets
+                    try {
+                        val inputStream = assets.open(sourceAsset)
+                        val content = inputStream.bufferedReader().use { it.readText() }
+                        inputStream.close()
+                        skillFile.writeText(content)
+                    } catch (e: Exception) {
+                        // Nếu không có file asset, tạo từ JS constant
+                        val jsGetContent = if (type == "30s") {
+                            "typeof SKILL_30S_DIRECTIVE !== 'undefined' ? SKILL_30S_DIRECTIVE : ''"
+                        } else {
+                            "typeof SKILL_10_15S_DIRECTIVE !== 'undefined' ? SKILL_10_15S_DIRECTIVE : ''"
+                        }
+                        webView.evaluateJavascript(jsGetContent) { result ->
+                            val content = result?.trim('"')?.replace("\\n", "\n")?.replace("\\\"", "\"") ?: ""
+                            if (content.isNotEmpty()) {
+                                skillFile.writeText(content)
+                                continueAttachSkill(skillFile, assetName)
+                            } else {
+                                Toast.makeText(this@MainActivity, "⚠️ Không tìm thấy nội dung SKILL", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        return@runOnUiThread
+                    }
+
+                    continueAttachSkill(skillFile, assetName)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    Toast.makeText(this@MainActivity, "⚠️ Lỗi: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
 
         @JavascriptInterface
