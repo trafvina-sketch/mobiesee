@@ -812,6 +812,13 @@ class MainActivity : AppCompatActivity() {
             webView.evaluateJavascript("window.duongThoDownloadAll && window.duongThoDownloadAll();", null)
         }
 
+        val dialogBtnRescan = dialogView.findViewById<MaterialButton>(R.id.dialogBtnRescan)
+        dialogBtnRescan?.setOnClickListener {
+            dialog.dismiss()
+            Toast.makeText(this, "🔄 Đang quét lại toàn bộ video...", Toast.LENGTH_SHORT).show()
+            webView.evaluateJavascript("window.duongThoForceRescan && window.duongThoForceRescan();", null)
+        }
+
         dialogBtnReload.setOnClickListener {
             dialog.dismiss()
             webView.reload()

@@ -412,6 +412,20 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
+        <!-- Nút Quét lại Video -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/dialogBtnRescan"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:layout_marginTop="8dp"
+            android:text="🔄 QUÉT LẠI TOÀN BỘ VIDEO TRÊN TRANG"
+            android:textColor="#38bdf8"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            app:cornerRadius="10dp"
+            app:strokeColor="#38bdf8" />
+
         <!-- Nút Tải tất cả vào Thư viện -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/dialogBtnDownloadAll"

@@ -5851,6 +5851,47 @@ if (typeof window !== 'undefined') {
     attachIndividualVideoDownloadButtons();
   };
 
+  window.duongThoForceRescan = async function() {
+    console.log('[DuongTho] Quét lại toàn bộ video...');
+    visitedInFlight.clear();
+    visitedSignatures.clear();
+    visitedVids.clear();
+    extractedList = [];
+    syncStorage();
+
+    // 1. Quét fallback_api trong HTML và script
+    scanDom();
+
+    // 2. Quét trực tiếp toàn bộ thẻ video trong DOM
+    try {
+      const vids = Array.from(document.querySelectorAll('video')).filter(v => v.id !== 'channa-ref-video');
+      vids.forEach((v, idx) => {
+        const src = v.currentSrc || v.src || v.querySelector('source')?.src || v.getAttribute('src');
+        if (src && (src.startsWith('http') || src.startsWith('blob:'))) {
+          const card = v.closest('[data-message-id], [class*="message"], [class*="bubble"], [class*="card"]') || v.parentElement;
+          const prompt = card ? (card.querySelector('p, span, [class*="text"]')?.textContent || '').trim().slice(0, 40) : '';
+          const fname = prompt ? `${prompt.replace(/[/\\?%*:|"<>]/g, '_')}.mp4` : makeFilename(null);
+          addVideo(src, fname, '', 'dom_' + idx);
+        }
+      });
+    } catch(e) {}
+
+    // 3. Cuộn nhẹ container để kích hoạt lazy loading
+    try {
+      const scroller = document.querySelector('[class*="chat-content"], [class*="scroll"], main, div[role="feed"]') || window;
+      if (scroller && scroller.scrollBy) {
+        scroller.scrollBy(0, 15);
+        setTimeout(() => scroller.scrollBy(0, -15), 100);
+      }
+    } catch(e) {}
+
+    notifyAndroidCount();
+    attachIndividualVideoDownloadButtons();
+    if (window.__showChannaNotice) {
+      window.__showChannaNotice('🔄 Đã quét lại: Phát hiện ' + extractedList.length + ' video!');
+    }
+  };
+
   window.duongThoResetCurrentChatVideos = function() {
     extractedList = [];
     window.duongThoVideos = [];
@@ -5931,25 +5972,27 @@ if (typeof window !== 'undefined') {
         box-shadow: 0 6px 18px rgba(16, 185, 129, 0.55), 0 0 14px rgba(168, 85, 247, 0.35) !important;
       }
 
-      /* --- Smart In-Page Floating Toolbar --- */
+      /* --- Smart In-Page Floating Toolbar (Nhỏ gọn, nép góc phải, thu gọn được) --- */
       #dola-extension-top-bar {
         position: fixed !important;
-        top: 8px !important;
-        left: 50% !important;
-        transform: translateX(-50%) !important;
+        top: 10px !important;
+        right: 12px !important;
+        left: auto !important;
+        transform: none !important;
         z-index: 999980 !important;
-        display: flex !important;
+        display: inline-flex !important;
         align-items: center !important;
-        gap: 6px !important;
-        padding: 5px 10px !important;
+        gap: 5px !important;
+        padding: 4px 8px !important;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-        font-size: 11.5px !important;
+        font-size: 11px !important;
         font-weight: 600 !important;
-        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
         user-select: none !important;
-        max-width: calc(100vw - 16px) !important;
+        max-width: calc(100vw - 24px) !important;
         overflow-x: auto !important;
         scrollbar-width: none !important;
+        border-radius: 999px !important;
       }
       #dola-extension-top-bar::-webkit-scrollbar {
         display: none !important;
@@ -5958,22 +6001,42 @@ if (typeof window !== 'undefined') {
       /* Chuẩn Dola Toolbar */
       [data-dola-theme="native"] #dola-extension-top-bar,
       :root:not([data-dola-theme="custom"]) #dola-extension-top-bar {
-        background: rgba(24, 24, 27, 0.95) !important;
+        background: rgba(24, 24, 27, 0.94) !important;
         color: #f4f4f5 !important;
-        border: 1px solid rgba(255, 255, 255, 0.14) !important;
-        border-radius: 999px !important;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
+        border: 1px solid rgba(255, 255, 255, 0.16) !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45) !important;
         backdrop-filter: blur(10px) !important;
       }
 
       /* Tùy Biến Pro Toolbar */
       [data-dola-theme="custom"] #dola-extension-top-bar {
-        background: rgba(15, 23, 42, 0.92) !important;
+        background: rgba(15, 23, 42, 0.94) !important;
         color: #f8fafc !important;
-        border: 1px solid rgba(168, 85, 247, 0.45) !important;
-        border-radius: 999px !important;
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.65), 0 0 20px rgba(124, 58, 237, 0.3) !important;
+        border: 1px solid rgba(168, 85, 247, 0.5) !important;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.65), 0 0 16px rgba(124, 58, 237, 0.35) !important;
         backdrop-filter: blur(14px) !important;
+      }
+
+      /* Trạng thái THU GỌN: Chỉ là viên thuốc siêu nhỏ ở góc phải, KHÔNG CHE KHUNG CHAT */
+      #dola-extension-top-bar.is-collapsed {
+        padding: 4px 8px !important;
+        cursor: pointer !important;
+      }
+      #dola-extension-top-bar.is-collapsed .dola-ext-expanded-only {
+        display: none !important;
+      }
+      #dola-extension-top-bar:not(.is-collapsed) .dola-ext-collapsed-only {
+        display: none !important;
+      }
+
+      /* Nút Quét lại */
+      .dola-ext-rescan-btn {
+        background: #0284c7 !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(56, 189, 248, 0.4) !important;
+      }
+      .dola-ext-rescan-btn:hover {
+        background: #0369a1 !important;
       }
 
       /* Brand Tag / Logo */
@@ -6081,6 +6144,8 @@ if (typeof window !== 'undefined') {
     (document.head || document.documentElement).appendChild(style);
   }
 
+  let isBarCollapsed = localStorage.getItem('dola_ext_bar_collapsed') !== 'false';
+
   function renderFloatingExtensionBar() {
     injectThemeStyles();
     let bar = document.getElementById('dola-extension-top-bar');
@@ -6090,39 +6155,36 @@ if (typeof window !== 'undefined') {
       (document.body || document.documentElement).appendChild(bar);
     }
 
+    if (isBarCollapsed) {
+      bar.classList.add('is-collapsed');
+    } else {
+      bar.classList.remove('is-collapsed');
+    }
+
     const currentTheme = document.documentElement.getAttribute('data-dola-theme') || 'native';
     const isCustom = currentTheme === 'custom';
     const count = (extractedList && extractedList.length) ? extractedList.length : 0;
 
     // SVG Logo chú cún con kute đeo tai nghe công nghệ
     const logoSvg = `
-      <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <!-- Vòng cung tai nghe xanh mint -->
+      <svg width="18" height="18" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M 6 15 A 10 10 0 0 1 26 15" stroke="${isCustom ? '#34d399' : '#10b981'}" stroke-width="2.8" stroke-linecap="round"/>
-        <!-- Tai cún mềm mại -->
         <ellipse cx="8.5" cy="14" rx="3.2" ry="5.5" fill="#f1f5f9" transform="rotate(-15 8.5 14)"/>
         <ellipse cx="8.5" cy="14" rx="1.8" ry="3.6" fill="#f472b6" opacity="0.8" transform="rotate(-15 8.5 14)"/>
         <ellipse cx="23.5" cy="14" rx="3.2" ry="5.5" fill="#f1f5f9" transform="rotate(15 23.5 14)"/>
         <ellipse cx="23.5" cy="14" rx="1.8" ry="3.6" fill="#f472b6" opacity="0.8" transform="rotate(15 23.5 14)"/>
-        <!-- Đầu cún tròn xoe -->
         <circle cx="16" cy="17" r="8.2" fill="#ffffff"/>
-        <!-- Má bầu bĩnh -->
         <circle cx="10.8" cy="19.5" r="3" fill="#ffffff"/>
         <circle cx="21.2" cy="19.5" r="3" fill="#ffffff"/>
-        <!-- Má hồng kute -->
         <ellipse cx="11.2" cy="20.3" rx="1.8" ry="1.1" fill="#f472b6" opacity="0.65"/>
         <ellipse cx="20.8" cy="20.3" rx="1.8" ry="1.1" fill="#f472b6" opacity="0.65"/>
-        <!-- Đôi mắt to tròn long lanh -->
         <circle cx="13.2" cy="16.3" r="1.7" fill="#0f172a"/>
         <circle cx="12.7" cy="15.7" r="0.65" fill="#ffffff"/>
         <circle cx="18.8" cy="16.3" r="1.7" fill="#0f172a"/>
         <circle cx="18.3" cy="15.7" r="0.65" fill="#ffffff"/>
-        <!-- Mũi & miệng cười toe toét -->
         <ellipse cx="16" cy="18.7" rx="1.1" ry="0.8" fill="#334155"/>
         <path d="M 14.7 20.2 Q 16 21.4 17.3 20.2" stroke="#334155" stroke-width="0.8" fill="none" stroke-linecap="round"/>
-        <!-- Lưỡi nhỏ nhí nhảnh -->
         <circle cx="16" cy="21.1" r="0.75" fill="#fb7185"/>
-        <!-- Ốp tai nghe công nghệ tím pastel -->
         <rect x="4.2" y="11.8" width="3.2" height="6.8" rx="1.6" fill="${isCustom ? '#06b6d4' : '#14b8a6'}"/>
         <rect x="24.6" y="11.8" width="3.2" height="6.8" rx="1.6" fill="${isCustom ? '#06b6d4' : '#14b8a6'}"/>
         <circle cx="5.8" cy="15.2" r="1.1" fill="${isCustom ? '#c084fc' : '#a855f7'}"/>
@@ -6131,25 +6193,24 @@ if (typeof window !== 'undefined') {
     `;
 
     bar.innerHTML = `
-      <div class="dola-ext-brand" title="Dola Studio Pro Extension">
+      <div id="dola-ext-brand-toggle" class="dola-ext-brand" title="Bấm để mở rộng / thu gọn thanh điều khiển" style="cursor:pointer;">
         <div class="dola-ext-logo-icon">${logoSvg}</div>
-        <span class="dola-ext-brand-title">Dola Puppy</span>
+        <span class="dola-ext-brand-title">${isBarCollapsed ? 'Dola' : 'Dola Puppy'}</span>
         <span id="dola-ext-count-pill" class="dola-ext-count-pill">${count} video</span>
+        <span class="dola-ext-collapsed-only" style="font-size:10px;color:#94a3b8;margin-left:2px;">▼</span>
       </div>
 
-      <!-- Nút Tải ảnh lên từ máy -->
-      <button id="dola-ext-upload-img-btn" class="dola-ext-btn dola-ext-upload-btn" title="Chọn ảnh từ thư viện hoặc tệp trong máy để gắn vào Dola">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-          <circle cx="8.5" cy="8.5" r="1.5"/>
-          <polyline points="21 15 16 10 5 21"/>
+      <!-- Nút Quét lại -->
+      <button id="dola-ext-rescan-btn" class="dola-ext-btn dola-ext-rescan-btn dola-ext-expanded-only" title="Quét lại toàn bộ video trên trang">
+        <svg id="dola-ext-rescan-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
         </svg>
-        <span>Tải ảnh</span>
+        <span>Quét lại</span>
       </button>
 
       <!-- Nút Tải tất cả video đã quét -->
-      <button id="dola-ext-dl-all-btn" class="dola-ext-btn dola-ext-dl-btn" style="${count > 0 ? '' : 'display:none;'}" title="Tải tất cả video đã phát hiện">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <button id="dola-ext-dl-all-btn" class="dola-ext-btn dola-ext-dl-btn dola-ext-expanded-only" style="${count > 0 ? '' : 'display:none;'}" title="Tải tất cả video đã phát hiện">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
           <polyline points="7 10 12 15 17 10"/>
           <line x1="12" y1="15" x2="12" y2="3"/>
@@ -6157,20 +6218,64 @@ if (typeof window !== 'undefined') {
         <span id="dola-ext-dl-all-text">Tải (${count})</span>
       </button>
 
-      <!-- Nút Đổi giao diện -->
-      <button id="dola-ext-theme-toggle-btn" class="dola-ext-btn dola-ext-theme-btn" title="Chuyển đổi giao diện: Chuẩn Dola hoặc Tùy Biến Pro">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
-          <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
-          <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
-          <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
-          <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2z"/>
+      <!-- Nút Tải ảnh lên từ máy -->
+      <button id="dola-ext-upload-img-btn" class="dola-ext-btn dola-ext-upload-btn dola-ext-expanded-only" title="Chọn ảnh từ thư viện hoặc tệp trong máy để gắn vào Dola">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
         </svg>
-        <span>${isCustom ? '💎 Pro Studio' : '🎨 Chuẩn Dola'}</span>
+        <span>Tải ảnh</span>
       </button>
 
-      <button id="dola-ext-close-btn" style="background:none;border:none;color:#94a3b8;font-size:12px;cursor:pointer;padding:0 3px;line-height:1;" title="Ẩn thanh">✕</button>
+      <!-- Nút Đổi giao diện -->
+      <button id="dola-ext-theme-toggle-btn" class="dola-ext-btn dola-ext-theme-btn dola-ext-expanded-only" title="Chuyển đổi giao diện">
+        <span>${isCustom ? '💎 Pro' : '🎨 Dola'}</span>
+      </button>
+
+      <!-- Nút Thu gọn lại vào trong -->
+      <button id="dola-ext-collapse-btn" class="dola-ext-btn dola-ext-collapse-btn dola-ext-expanded-only" title="Thu gọn thanh điều khiển" style="background:rgba(255,255,255,0.08);color:#94a3b8;border:1px solid rgba(255,255,255,0.15);padding:3px 7px;">
+        <span>▲ Thu vào</span>
+      </button>
     `;
+
+    // Click vào thanh khi đang thu gọn để mở ra
+    const brandToggle = bar.querySelector('#dola-ext-brand-toggle');
+    if (brandToggle) {
+      brandToggle.onclick = (e) => {
+        e.stopPropagation();
+        if (isBarCollapsed) {
+          isBarCollapsed = false;
+          localStorage.setItem('dola_ext_bar_collapsed', 'false');
+          renderFloatingExtensionBar();
+        }
+      };
+    }
+
+    // Bấm nút Thu vào
+    const collapseBtn = bar.querySelector('#dola-ext-collapse-btn');
+    if (collapseBtn) {
+      collapseBtn.onclick = (e) => {
+        e.stopPropagation();
+        isBarCollapsed = true;
+        localStorage.setItem('dola_ext_bar_collapsed', 'true');
+        renderFloatingExtensionBar();
+      };
+    }
+
+    // Bấm nút Quét lại
+    const rescanBtn = bar.querySelector('#dola-ext-rescan-btn');
+    if (rescanBtn) {
+      rescanBtn.onclick = async (e) => {
+        e.stopPropagation();
+        const icon = bar.querySelector('#dola-ext-rescan-icon');
+        if (icon) icon.classList.add('dola-spin');
+        await window.duongThoForceRescan();
+        setTimeout(() => {
+          if (icon) icon.classList.remove('dola-spin');
+        }, 800);
+      };
+    }
 
     // Gắn sự kiện nút Tải ảnh từ thiết bị
     const uploadBtn = bar.querySelector('#dola-ext-upload-img-btn');
@@ -6218,14 +6323,6 @@ if (typeof window !== 'undefined') {
         } else if (window.DuongThoAndroid && typeof window.DuongThoAndroid.onThemeChanged === 'function') {
           window.DuongThoAndroid.onThemeChanged(nextTheme);
         }
-      };
-    }
-
-    const closeBtn = bar.querySelector('#dola-ext-close-btn');
-    if (closeBtn) {
-      closeBtn.onclick = (e) => {
-        e.stopPropagation();
-        bar.style.display = 'none';
       };
     }
   }
