@@ -1,3 +1,30 @@
+
+// ============================================================================
+// 🎬 DUONG THO MASTER ENGINE (15s - 30s SEEDANCE 2.5 BYPASS & 1080P EXTRACTOR)
+// ============================================================================
+(() => {
+  'use strict';
+  if (typeof window !== 'undefined') {
+    if (window.__duongThoMasterLoaded) return;
+    window.__duongThoMasterLoaded = true;
+
+    try {
+      const style = document.createElement('style');
+      style.id = 'duongtho-clean-ui-style';
+      style.textContent = `
+        #channa-accounts-dock-btn, #channa-accounts-quick-popover, #channa-dock-toggle-btn, #channa-prompt-dock {
+          display: none !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
+        }
+      `;
+      (document.head || document.documentElement).appendChild(style);
+    } catch(e) {}
+  }
+})();
+
+
+
 // ============================================================================
 // 🛡️ DOLA HARDENED ACCOUNT & ANTI-LOGOUT PROTECTION SHIELD
 // ============================================================================
@@ -2527,21 +2554,1159 @@ if (typeof window !== 'undefined') {
   window.addEventListener('focus', syncMasterTopContainer, { passive: true });
 })();
 
-// --- 🧹 PROMPT DOCK REMOVED PER USER REQUEST (CLEAN EXTENSION) ---
+// --- 📐 SMART PROMPT DOCK, STEPPER & 1-CLICK PASTE ENGINE (ZERO OVERLAP) ---
 (() => {
   'use strict';
-  function removePromptDockElements() {
-    try {
-      const ids = ['channa-prompt-dock', 'channa-dock-toggle-btn', 'channa-workflow-hud'];
-      for (const id of ids) {
-        const el = document.getElementById(id);
-        if (el) el.remove();
-      }
-    } catch(e) {}
+
+  let localDockPrompts = [];
+  let dockSearchQuery = '';
+  let dockFilter = 'all'; // 'all' | 'queued' | 'done'
+  let activePromptIndex = 0;
+  let isQuickAddOpen = false;
+  let autoAdvanceEnabled = true;
+  let expandedCardIndices = new Set();
+
+  function escapeHtml(str) {
+    return String(str || '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
   }
-  removePromptDockElements();
-  window.addEventListener('DOMContentLoaded', removePromptDockElements, { passive: true });
-  window.addEventListener('load', removePromptDockElements, { passive: true });
+
+  function getPromptText(item) {
+    if (!item) return '';
+    if (typeof item === 'string') return item.trim();
+    return String(item.prompt || item.text || item.content || item.value || '').trim();
+  }
+
+  function getPromptTitle(item, idx) {
+    const numStr = String(idx + 1).padStart(2, '0');
+    if (!item) return `Prompt #${numStr}`;
+    if (typeof item === 'string') return `Prompt #${numStr}`;
+    return item.title || item.name || `Prompt #${numStr}`;
+  }
+
+  function findDolaComposer() {
+    const selectors = [
+      '.tiptap.ProseMirror[contenteditable="true"]',
+      '.tiptap.ProseMirror',
+      '.ProseMirror[contenteditable="true"]',
+      'div[contenteditable="true"][role="textbox"]',
+      'div[contenteditable="true"]',
+      '.ProseMirror',
+      '[contenteditable="true"]',
+      'textarea[placeholder*="message" i]',
+      'textarea[placeholder*="prompt" i]',
+      'textarea[placeholder*="video" i]',
+      'textarea[placeholder*="describe" i]',
+      'textarea[placeholder*="chat" i]',
+      'textarea',
+      '.semi-input-textarea',
+      '[data-testid="chat-input"]',
+      'input[type="text"][placeholder*="message" i]'
+    ];
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (el && (el.offsetParent !== null || el.offsetHeight > 0 || (el.getClientRects && el.getClientRects().length > 0))) {
+        return el;
+      }
+    }
+    return document.querySelector('.tiptap.ProseMirror, .ProseMirror, textarea, div[contenteditable="true"]');
+  }
+
+  function injectPromptIntoDola(text, options = {}) {
+    if (!text || typeof text !== 'string') return false;
+    text = text.trim();
+    if (!text) return false;
+
+    if (!options?.skipDna && typeof window.__applyCharacterDna === 'function') {
+      text = window.__applyCharacterDna(text);
+    }
+
+    const composer = findDolaComposer();
+    if (!composer) {
+      console.warn('[Prompt Dock] Active composer element not found on page.');
+      return false;
+    }
+
+    try {
+      try { composer.focus({ preventScroll: true }); } catch (e) { composer.focus(); }
+
+      // 1. Primary Native TipTap Command (Standard on Dola AI)
+      if (composer.editor && typeof composer.editor.commands?.setContent === 'function') {
+        composer.editor.commands.setContent(text);
+        if (typeof composer.editor.commands?.focus === 'function') {
+          try { composer.editor.commands.focus('end', { preventScroll: true }); } catch (e) { composer.editor.commands.focus('end'); }
+        }
+        composer.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        composer.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+        return true;
+      }
+
+      // 2. TipTap insertContent Fallback
+      if (composer.editor && typeof composer.editor.commands?.insertContent === 'function') {
+        composer.editor.commands.insertContent(text);
+        if (typeof composer.editor.commands?.focus === 'function') {
+          try { composer.editor.commands.focus('end', { preventScroll: true }); } catch (e) { composer.editor.commands.focus('end'); }
+        }
+        composer.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        composer.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+        return true;
+      }
+
+      // 3. ContentEditable / ProseMirror execCommand Fallback
+      if (composer.isContentEditable || composer.getAttribute('contenteditable') === 'true') {
+        let injected = false;
+        try {
+          const sel = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(composer);
+          sel.removeAllRanges();
+          sel.addRange(range);
+
+          document.execCommand('delete', false);
+          injected = document.execCommand('insertText', false, text);
+        } catch (e) {}
+
+        if (!injected || !composer.textContent?.includes(text.slice(0, 15))) {
+          try {
+            const ev = new InputEvent('beforeinput', {
+              bubbles: true,
+              cancelable: true,
+              inputType: 'insertText',
+              data: text
+            });
+            composer.dispatchEvent(ev);
+          } catch (e) {}
+        }
+
+        if (!composer.textContent || !composer.textContent.includes(text.slice(0, 15))) {
+          try {
+            const esc = escapeHtml(text);
+            composer.innerHTML = `<p>${esc}</p>`;
+          } catch (e) {
+            composer.textContent = text;
+          }
+        }
+
+        composer.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        composer.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+        try { composer.focus({ preventScroll: true }); } catch (e) { composer.focus(); }
+        return true;
+      }
+
+      // 4. Textarea or Input Fallback
+      if (composer.tagName === 'TEXTAREA' || composer.tagName === 'INPUT') {
+        const proto = composer.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+        const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+        if (nativeSetter) {
+          nativeSetter.call(composer, text);
+        } else {
+          composer.value = text;
+        }
+        composer.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        composer.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+        try { composer.focus({ preventScroll: true }); } catch (e) { composer.focus(); }
+        return true;
+      }
+    } catch (err) {
+      console.warn('[Prompt Dock] Error injecting prompt:', err);
+    }
+    return false;
+  }
+
+  window.injectPromptIntoDola = injectPromptIntoDola;
+
+  function parsePromptsFromRawText(text) {
+    if (!text || typeof text !== 'string') return [];
+    const normalized = text.replace(/\r\n?/g, '\n').trim();
+    if (!normalized) return [];
+
+    if (/\n(?:[^\S\n]*\n)+/.test(normalized)) {
+      return normalized.split(/\n(?:[^\S\n]*\n)+/).map(p => p.trim()).filter(Boolean).map((p, idx) => ({
+        text: p,
+        prompt: p,
+        title: `Prompt #${idx + 1}`,
+        done: false
+      }));
+    }
+
+    return normalized.split('\n').map(l => l.trim()).filter(Boolean).map((line, idx) => ({
+      text: line,
+      prompt: line,
+      title: `Prompt #${idx + 1}`,
+      done: false
+    }));
+  }
+
+  function saveDockPrompts() {
+    window.postMessage({
+      type: 'CTB_SAVE_PROMPTS_FROM_PAGE',
+      prompts: localDockPrompts
+    }, '*');
+  }
+
+  function isPromptDockOpen(dock, toggleBtn) {
+    if (toggleBtn) {
+      const text = toggleBtn.innerText || toggleBtn.textContent || '';
+      if (text.includes('▼')) return true;
+      if (text.includes('◀')) return false;
+    }
+    if (dock) {
+      if (dock.style.display === 'none') return false;
+      if (dock.style.display === 'block' || dock.style.display === 'flex') return true;
+      try {
+        const comp = window.getComputedStyle(dock);
+        return comp.display !== 'none' && comp.visibility !== 'hidden';
+      } catch (e) {}
+    }
+    return false;
+  }
+
+  function syncPromptDockAndToggle() {
+    try {
+      const toggleBtn = document.getElementById('channa-dock-toggle-btn');
+      const dock = document.getElementById('channa-prompt-dock');
+
+      if (!toggleBtn) return;
+      const open = isPromptDockOpen(dock, toggleBtn);
+
+      if (open) {
+        toggleBtn.style.setProperty('display', 'none', 'important');
+      } else {
+        toggleBtn.style.setProperty('display', 'flex', 'important');
+      }
+    } catch (e) {}
+  }
+
+  function advanceToNextPrompt(fromIdx) {
+    if (localDockPrompts.length === 0) return;
+    const start = (typeof fromIdx === 'number' ? fromIdx + 1 : activePromptIndex + 1);
+    for (let i = 0; i < localDockPrompts.length; i++) {
+      const candidateIdx = (start + i) % localDockPrompts.length;
+      if (!localDockPrompts[candidateIdx].done) {
+        activePromptIndex = candidateIdx;
+        return;
+      }
+    }
+    activePromptIndex = Math.min(localDockPrompts.length - 1, start);
+  }
+
+  let dockMode = localStorage.getItem('ctb_dock_mode') || 'compact'; // 'compact' | 'drawer' | 'minimized'
+
+  function applyDockMode(mode) {
+    dockMode = mode;
+    try { localStorage.setItem('ctb_dock_mode', mode); } catch (e) {}
+    const dock = document.getElementById('channa-prompt-dock');
+    if (!dock) return;
+
+    const header = document.getElementById('channa-dock-header');
+    const stepperBody = document.getElementById('channa-dock-stepper-body');
+    const drawer = document.getElementById('channa-dock-drawer');
+    const minBody = document.getElementById('channa-dock-min-body');
+    const toggleDrawerBtn = document.getElementById('channa-dock-toggle-drawer-btn');
+
+    if (mode === 'minimized') {
+      dock.classList.add('channa-dock-minimized');
+      dock.style.maxHeight = '50px';
+      if (header) header.style.display = 'none';
+      if (stepperBody) stepperBody.style.display = 'none';
+      if (drawer) drawer.style.display = 'none';
+      if (minBody) minBody.style.display = 'flex';
+    } else if (mode === 'drawer') {
+      dock.classList.remove('channa-dock-minimized');
+      dock.style.maxHeight = 'calc(100vh - 240px)';
+      if (header) header.style.display = 'flex';
+      if (stepperBody) stepperBody.style.display = 'flex';
+      if (drawer) drawer.style.display = 'flex';
+      if (minBody) minBody.style.display = 'none';
+      if (toggleDrawerBtn) {
+        toggleDrawerBtn.innerHTML = '▲ Close List';
+        toggleDrawerBtn.style.background = 'rgba(168, 85, 247, 0.35)';
+      }
+    } else { // 'compact'
+      dock.classList.remove('channa-dock-minimized');
+      dock.style.maxHeight = '140px';
+      if (header) header.style.display = 'flex';
+      if (stepperBody) stepperBody.style.display = 'flex';
+      if (drawer) drawer.style.display = 'none';
+      if (minBody) minBody.style.display = 'none';
+      if (toggleDrawerBtn) {
+        const total = localDockPrompts.length;
+        toggleDrawerBtn.innerHTML = `📋 List (${total})`;
+        toggleDrawerBtn.style.background = 'rgba(255, 255, 255, 0.08)';
+      }
+    }
+  }
+
+  function renderDockCards() {
+    const list = document.getElementById('channa-dock-prompt-list');
+    const badge = document.getElementById('channa-dock-btn-badge');
+    const counterBadge = document.getElementById('channa-dock-counter-badge');
+    const toggleDrawerBtn = document.getElementById('channa-dock-toggle-drawer-btn');
+    const minLabel = document.getElementById('channa-dock-min-label');
+    const minPasteBtn = document.getElementById('channa-dock-min-paste-btn');
+
+    const total = localDockPrompts.length;
+    const queuedCount = localDockPrompts.filter(p => !p.done).length;
+    const doneCount = total - queuedCount;
+
+    if (badge) badge.textContent = String(queuedCount);
+
+    if (toggleDrawerBtn && dockMode !== 'drawer') {
+      toggleDrawerBtn.innerHTML = `📋 List (${total})`;
+    }
+
+    // Filter pills
+    const filterPills = document.querySelectorAll('.channa-dock-filter-pill');
+    filterPills.forEach(pill => {
+      const f = pill.dataset.filter;
+      pill.classList.toggle('active', f === dockFilter);
+      if (f === 'all') pill.textContent = `All (${total})`;
+      if (f === 'queued') pill.textContent = `Queued (${queuedCount})`;
+      if (f === 'done') pill.textContent = `Done (${doneCount})`;
+    });
+
+    // Active item stats
+    const stepperPromptTitle = document.getElementById('channa-dock-stepper-title');
+    const stepperPromptSnippet = document.getElementById('channa-dock-stepper-snippet');
+    const stepperPasteBtn = document.getElementById('channa-dock-stepper-paste-btn');
+
+    if (total > 0) {
+      if (activePromptIndex >= total) activePromptIndex = 0;
+      const activeItem = localDockPrompts[activePromptIndex];
+      const activeNum = String(activePromptIndex + 1).padStart(2, '0');
+      const activeTitle = getPromptTitle(activeItem, activePromptIndex);
+      const activeText = getPromptText(activeItem);
+
+      if (counterBadge) counterBadge.innerHTML = `<strong>#${activeNum}</strong> / ${total} ${activeItem?.done ? '<span style="color:#10b981;">(Done)</span>' : '<span style="color:#c084fc;">(Queued)</span>'}`;
+      if (stepperPromptTitle) {
+        stepperPromptTitle.textContent = `#${activeNum}: ${activeTitle}`;
+        stepperPromptTitle.title = activeText;
+      }
+      if (stepperPromptSnippet) stepperPromptSnippet.textContent = activeText || '(No prompt text)';
+      if (stepperPasteBtn) stepperPasteBtn.innerHTML = `⚡ 1-Click Paste #${activeNum} & Next`;
+
+      if (minLabel) minLabel.textContent = `#${activeNum} (${total})`;
+      if (minPasteBtn) minPasteBtn.innerHTML = `⚡ Paste #${activeNum}`;
+    } else {
+      if (counterBadge) counterBadge.textContent = '0 Ready';
+      if (stepperPromptTitle) stepperPromptTitle.textContent = 'No prompts loaded';
+      if (stepperPromptSnippet) stepperPromptSnippet.textContent = 'Upload or paste prompts in Side Panel';
+      if (stepperPasteBtn) stepperPasteBtn.innerHTML = `⚡ Paste Prompt & Next`;
+      if (minLabel) minLabel.textContent = '#00';
+    }
+
+    if (!list) return;
+
+    // Filter list
+    const filtered = localDockPrompts.map((p, idx) => ({ ...p, origIdx: idx })).filter(item => {
+      if (dockFilter === 'queued' && item.done) return false;
+      if (dockFilter === 'done' && !item.done) return false;
+      if (dockSearchQuery) {
+        const text = getPromptText(item).toLowerCase();
+        const title = getPromptTitle(item, item.origIdx).toLowerCase();
+        return text.includes(dockSearchQuery) || title.includes(dockSearchQuery);
+      }
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      list.innerHTML = `
+        <div style="text-align: center; padding: 18px 10px; color: #94a3b8; font-size: 10px;">
+          ${total === 0 ? 'No prompts yet. Load prompts in Side Panel.' : 'No matching prompts found.'}
+        </div>
+      `;
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    filtered.forEach(item => {
+      const origIdx = item.origIdx;
+      const numStr = String(origIdx + 1).padStart(2, '0');
+      const card = document.createElement('div');
+      const isActive = origIdx === activePromptIndex;
+      card.className = `channa-dock-card${item.done ? ' done' : ''}${isActive ? ' active-card' : ''}`;
+      card.id = `channa-dock-card-${origIdx}`;
+
+      const title = getPromptTitle(item, origIdx);
+      const fullText = getPromptText(item);
+
+      card.innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+          <div style="display: flex; align-items: center; gap: 6px; overflow: hidden; flex: 1;">
+            <span style="background: ${isActive ? 'linear-gradient(135deg, #059669, #10b981)' : 'rgba(168, 85, 247, 0.25)'}; color: ${isActive ? '#fff' : '#c084fc'}; font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 4px; font-family: monospace;">#${numStr}</span>
+            <span style="font-size: 10.5px; font-weight: 600; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;" title="${escapeHtml(fullText)}">${escapeHtml(title)}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <button class="channa-dock-paste-btn" data-idx="${origIdx}" title="Paste into composer">📋 Paste</button>
+            <button class="channa-dock-paste-next-btn" data-idx="${origIdx}" title="Paste & Advance">⚡ Next</button>
+            <button class="channa-dock-toggle-done-btn" data-idx="${origIdx}" style="background: none; border: none; font-size: 11px; cursor: pointer; padding: 0 2px;" title="Toggle Done">${item.done ? '✅' : '⚪'}</button>
+          </div>
+        </div>
+      `;
+
+      fragment.appendChild(card);
+    });
+
+    list.replaceChildren(fragment);
+  }
+
+  function makeDockDraggable(dock, handle) {
+    if (!dock || !handle || handle.__ctb_drag_bound) return;
+    handle.__ctb_drag_bound = true;
+
+    let isDragging = false;
+    let startX = 0, startY = 0, initialLeft = 0, initialTop = 0;
+
+    handle.addEventListener('mousedown', (e) => {
+      if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = dock.getBoundingClientRect();
+      initialLeft = rect.left;
+      initialTop = rect.top;
+
+      dock.style.bottom = 'auto';
+      dock.style.right = 'auto';
+      dock.style.transform = 'none';
+      dock.style.left = initialLeft + 'px';
+      dock.style.top = initialTop + 'px';
+
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const newLeft = Math.max(10, Math.min(window.innerWidth - dock.offsetWidth - 10, initialLeft + dx));
+      const maxAllowedTop = Math.max(10, window.innerHeight - dock.offsetHeight - 160);
+      const newTop = Math.max(10, Math.min(maxAllowedTop, initialTop + dy));
+      dock.style.left = newLeft + 'px';
+      dock.style.top = newTop + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        document.body.style.userSelect = '';
+        try {
+          localStorage.setItem('ctb_dock_pos', JSON.stringify({
+            left: dock.style.left,
+            top: dock.style.top
+          }));
+        } catch (e) {}
+      }
+    });
+  }
+
+  function ensurePromptDockDOM() {
+    if (!document.body) return;
+
+    // Inject Modern Glassmorphism CSS
+    if (!document.getElementById('ctb-prompt-dock-side-style')) {
+      const style = document.createElement('style');
+      style.id = 'ctb-prompt-dock-side-style';
+      style.textContent = `
+        #channa-dock-toggle-btn {
+          position: fixed !important;
+          top: 50% !important;
+          right: 0px !important;
+          left: auto !important;
+          bottom: auto !important;
+          transform: translateY(-50%) !important;
+          border-radius: 14px 0 0 14px !important;
+          z-index: 999999 !important;
+          background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%) !important;
+          border: 1px solid rgba(168, 85, 247, 0.6) !important;
+          border-right: none !important;
+          color: #ffffff !important;
+          padding: 8px 12px !important;
+          cursor: pointer !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 6px !important;
+          box-shadow: -4px 0 20px rgba(0, 0, 0, 0.65), -2px 0 10px rgba(124, 58, 237, 0.5) !important;
+          transition: transform 0.2s ease, right 0.2s ease !important;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+          user-select: none !important;
+        }
+        #channa-dock-toggle-btn:hover {
+          transform: translateY(-50%) scale(1.04) !important;
+          box-shadow: -6px 0 28px rgba(124, 58, 237, 0.75) !important;
+        }
+        #channa-prompt-dock {
+          position: fixed !important;
+          top: 75px !important;
+          right: 20px !important;
+          bottom: auto !important;
+          left: auto !important;
+          transform: none !important;
+          width: 350px !important;
+          max-width: calc(100vw - 32px) !important;
+          max-height: calc(100vh - 240px) !important;
+          background: rgba(14, 11, 26, 0.94) !important;
+          border: 1px solid rgba(168, 85, 247, 0.35) !important;
+          border-radius: 16px !important;
+          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65), 0 0 24px rgba(124, 58, 237, 0.25) !important;
+          backdrop-filter: blur(24px) !important;
+          z-index: 999998 !important;
+          display: none;
+          flex-direction: column !important;
+          overflow: hidden !important;
+          overscroll-behavior: contain !important;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+          color: #f1f5f9 !important;
+          box-sizing: border-box !important;
+          transition: box-shadow 0.2s ease;
+        }
+        #channa-dock-header {
+          flex-shrink: 0 !important;
+          user-select: none !important;
+        }
+        #channa-dock-stepper-body {
+          flex-shrink: 0 !important;
+        }
+        #channa-dock-drawer {
+          flex: 1 1 auto !important;
+          min-height: 0 !important;
+          overflow: hidden !important;
+          display: none;
+          flex-direction: column !important;
+        }
+        #channa-dock-prompt-list {
+          flex: 1 1 auto !important;
+          max-height: calc(100vh - 380px) !important;
+          min-height: 80px !important;
+          overflow-y: auto !important;
+          scroll-behavior: smooth !important;
+        }
+        #channa-prompt-dock.channa-dock-minimized {
+          width: auto !important;
+          min-width: 240px !important;
+          border-radius: 20px !important;
+          padding: 4px 6px !important;
+        }
+        .channa-dock-hero-paste-btn {
+          background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
+          color: white !important;
+          border: 1px solid #34d399 !important;
+          border-radius: 8px !important;
+          padding: 8px 12px !important;
+          font-size: 11.5px !important;
+          font-weight: 800 !important;
+          cursor: pointer !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 6px !important;
+          box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3) !important;
+          transition: all 0.2s ease !important;
+          width: 100% !important;
+          margin-top: 2px !important;
+        }
+        .channa-dock-hero-paste-btn:hover {
+          background: linear-gradient(135deg, #10b981 0%, #34d399 100%) !important;
+          box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45) !important;
+          transform: translateY(-1px) !important;
+        }
+        .channa-dock-hero-paste-btn:active {
+          transform: scale(0.98) !important;
+        }
+        .channa-dock-card {
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 8px;
+          padding: 6px 9px;
+          margin-bottom: 5px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          transition: border-color 0.2s, background 0.2s;
+        }
+        .channa-dock-card:hover {
+          background: rgba(255, 255, 255, 0.07);
+          border-color: rgba(168, 85, 247, 0.35);
+        }
+        .channa-dock-card.active-card {
+          border-color: rgba(56, 189, 248, 0.6) !important;
+          background: rgba(56, 189, 248, 0.06) !important;
+        }
+        .channa-dock-card.done {
+          opacity: 0.6;
+          border-color: rgba(16, 185, 129, 0.3);
+        }
+        .channa-dock-paste-btn {
+          background: linear-gradient(135deg, #7c3aed, #4f46e5);
+          color: white;
+          border: 1px solid rgba(192, 132, 252, 0.4);
+          border-radius: 5px;
+          padding: 3px 7px;
+          font-size: 9.5px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .channa-dock-paste-next-btn {
+          background: linear-gradient(135deg, #059669, #10b981);
+          color: white;
+          border: 1px solid rgba(52, 211, 153, 0.4);
+          border-radius: 5px;
+          padding: 3px 8px;
+          font-size: 9.5px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .channa-dock-filter-pill {
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 5px;
+          padding: 2px 7px;
+          font-size: 9px;
+          color: #94a3b8;
+          cursor: pointer;
+        }
+        .channa-dock-filter-pill.active {
+          background: rgba(168, 85, 247, 0.25);
+          border-color: #a855f7;
+          color: #f8fafc;
+          font-weight: 700;
+        }
+        #channa-dock-prompt-list::-webkit-scrollbar {
+          width: 4px;
+        }
+        #channa-dock-prompt-list::-webkit-scrollbar-track {
+          background: rgba(0, 0, 0, 0.2);
+        }
+        #channa-dock-prompt-list::-webkit-scrollbar-thumb {
+          background: #7c3aed;
+          border-radius: 4px;
+        }
+      `;
+      (document.head || document.documentElement).appendChild(style);
+    }
+
+    // Floating Tab
+    let toggleBtn = document.getElementById('channa-dock-toggle-btn');
+    if (toggleBtn) toggleBtn.remove();
+    if (false) {
+      toggleBtn = document.createElement('button');
+      toggleBtn.id = 'channa-dock-toggle-btn';
+      toggleBtn.title = 'Danh sách Prompts';
+      toggleBtn.innerHTML = `
+        <span style="font-size: 13px;">📝</span>
+        <span style="font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">PROMPTS</span>
+        <span id="channa-dock-btn-badge" style="background: rgba(255,255,255,0.25); color: #fff; font-size: 9px; font-weight: 700; border-radius: 10px; padding: 1px 5px;">0</span>
+      `;
+      document.body.appendChild(toggleBtn);
+      toggleBtn.addEventListener('click', () => {
+        const d = document.getElementById('channa-prompt-dock');
+        if (d) {
+          d.style.setProperty('display', 'flex', 'important');
+          syncPromptDockAndToggle();
+          renderDockCards();
+          applyDockMode(dockMode);
+        }
+      });
+    }
+
+    // Prompt Dock Panel
+    let dock = document.getElementById('channa-prompt-dock');
+    if (!dock) {
+      dock = document.createElement('div');
+      dock.id = 'channa-prompt-dock';
+
+      // Ensure dock starts at safe top-right position away from bottom prompt box
+      try {
+        const savedPos = JSON.parse(localStorage.getItem('ctb_dock_pos') || 'null');
+        if (savedPos && savedPos.left && savedPos.top) {
+          const topVal = parseFloat(savedPos.top);
+          if (!isNaN(topVal) && topVal < window.innerHeight - 240) {
+            dock.style.left = savedPos.left;
+            dock.style.top = savedPos.top;
+            dock.style.bottom = 'auto';
+            dock.style.right = 'auto';
+          } else {
+            localStorage.removeItem('ctb_dock_pos');
+            dock.style.top = '75px';
+            dock.style.right = '20px';
+            dock.style.bottom = 'auto';
+            dock.style.left = 'auto';
+          }
+        } else {
+          dock.style.top = '75px';
+          dock.style.right = '20px';
+          dock.style.bottom = 'auto';
+          dock.style.left = 'auto';
+        }
+      } catch (e) {
+        dock.style.top = '75px';
+        dock.style.right = '20px';
+        dock.style.bottom = 'auto';
+        dock.style.left = 'auto';
+      }
+
+      dock.innerHTML = `
+        <!-- 1. Header with Drag Handle & Controls -->
+        <div id="channa-dock-header" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: rgba(0, 0, 0, 0.4); border-bottom: 1px solid rgba(168, 85, 247, 0.25); cursor: move; user-select: none;">
+          <div style="display: flex; align-items: center; gap: 6px;" id="channa-dock-drag-handle">
+            <span style="color: #a855f7; font-size: 13px;">⠿</span>
+            <strong style="font-size: 11px; font-weight: 800; background: linear-gradient(135deg, #c084fc, #38bdf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">PROMPTS</strong>
+            <span id="channa-dock-counter-badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); font-size: 9px; font-weight: 700; border-radius: 8px; padding: 1px 6px;">01 / 100</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <button id="channa-dock-toggle-drawer-btn" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #e2e8f0; font-size: 9px; font-weight: 700; border-radius: 6px; padding: 2px 7px; cursor: pointer;">📋 List (0)</button>
+            <button id="channa-dock-minimize-btn" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #e2e8f0; font-size: 9.5px; border-radius: 6px; padding: 2px 6px; cursor: pointer;" title="Minimize to floating pill">➖</button>
+            <button id="channa-dock-close-btn" style="background: none; border: none; color: #94a3b8; font-size: 13px; cursor: pointer; padding: 0 4px; line-height: 1;" title="Close Dock">✕</button>
+          </div>
+        </div>
+
+        <!-- 2. Compact Stepper Body (The Feather-Light HUD) -->
+        <div id="channa-dock-stepper-body" style="padding: 8px 12px; display: flex; flex-direction: column; gap: 6px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+            <button id="channa-dock-stepper-prev" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 10px; font-weight: 700; cursor: pointer;" title="Previous prompt">◀</button>
+            <div style="flex: 1; overflow: hidden; text-align: center;" id="channa-dock-stepper-title-box">
+              <div id="channa-dock-stepper-title" style="font-size: 11px; font-weight: 700; color: #38bdf8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Active Prompt Title</div>
+              <div id="channa-dock-stepper-snippet" style="font-size: 9px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;">Preview snippet...</div>
+            </div>
+            <button id="channa-dock-stepper-next" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 10px; font-weight: 700; cursor: pointer;" title="Next prompt">▶</button>
+          </div>
+
+          <!-- Primary Super-Action Button -->
+          <button id="channa-dock-stepper-paste-btn" class="channa-dock-hero-paste-btn" title="Paste into Dola and advance">
+            ⚡ 1-Click Paste & Next
+          </button>
+        </div>
+
+        <!-- 3. Minimized Pill Body (Shown ONLY in minimized mode) -->
+        <div id="channa-dock-min-body" style="display: none; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 8px;">
+          <span id="channa-dock-min-label" style="font-size: 10px; font-weight: 800; color: #c084fc; font-family: monospace;">#01</span>
+          <button id="channa-dock-min-paste-btn" style="background: linear-gradient(135deg, #059669, #10b981); color: white; border: 1px solid #34d399; border-radius: 6px; padding: 3px 8px; font-size: 9.5px; font-weight: 800; cursor: pointer;">⚡ Paste & Next</button>
+          <button id="channa-dock-expand-btn" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.15); color: #f8fafc; border-radius: 6px; padding: 2px 6px; font-size: 10px; cursor: pointer;" title="Expand Dock">↗</button>
+        </div>
+
+        <!-- 4. Collapsible Drawer (Hidden by default, opens on '📋 List' click) -->
+        <div id="channa-dock-drawer" style="display: none; flex-direction: column; border-top: 1px solid rgba(168, 85, 247, 0.25); background: rgba(0, 0, 0, 0.3);">
+          <!-- Search & Filters -->
+          <div style="padding: 6px 10px; display: flex; flex-direction: column; gap: 5px;">
+            <div style="display: flex; gap: 4px;">
+              <button class="channa-dock-filter-pill active" data-filter="all">All</button>
+              <button class="channa-dock-filter-pill" data-filter="queued">Queued</button>
+              <button class="channa-dock-filter-pill" data-filter="done">Done</button>
+              <input id="channa-dock-search-box" type="text" placeholder="🔍 Search..." style="flex: 1; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; padding: 3px 7px; font-size: 9.5px; color: #f8fafc; outline: none;" />
+            </div>
+          </div>
+
+          <!-- Prompts Scrollable List -->
+          <div id="channa-dock-prompt-list" style="flex: 1; overflow-y: auto; padding: 6px 10px; max-height: 260px; scrollbar-width: thin;"></div>
+
+          <!-- Drawer Footer -->
+          <div style="padding: 6px 10px; background: rgba(0, 0, 0, 0.45); border-top: 1px solid rgba(255, 255, 255, 0.06); display: flex; align-items: center; justify-content: space-between; font-size: 8.5px; color: #94a3b8;">
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; color: #cbd5e1;">
+              <input type="checkbox" id="channa-dock-auto-advance-chk" checked style="accent-color: #8b5cf6;" />
+              Auto-advance
+            </label>
+            <div style="display: flex; gap: 8px;">
+              <span id="channa-dock-reset-done" style="color: #38bdf8; cursor: pointer;">Reset</span>
+              <span id="channa-dock-clear-all" style="color: #ef4444; cursor: pointer;">Clear</span>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(dock);
+
+      // Permanently lock dock scrollTop and scrollLeft to 0 so its header NEVER shifts or clips
+      dock.addEventListener('scroll', () => {
+        if (dock.scrollTop !== 0) dock.scrollTop = 0;
+        if (dock.scrollLeft !== 0) dock.scrollLeft = 0;
+      }, { passive: true });
+
+      // Make draggable
+      const dragHeader = document.getElementById('channa-dock-header');
+      makeDockDraggable(dock, dragHeader);
+
+      // Drawer toggle
+      const toggleDrawerBtn = document.getElementById('channa-dock-toggle-drawer-btn');
+      if (toggleDrawerBtn) {
+        toggleDrawerBtn.addEventListener('click', () => {
+          applyDockMode(dockMode === 'drawer' ? 'compact' : 'drawer');
+        });
+      }
+
+      // Minimize button
+      const minBtn = document.getElementById('channa-dock-minimize-btn');
+      if (minBtn) {
+        minBtn.addEventListener('click', () => {
+          applyDockMode('minimized');
+        });
+      }
+
+      // Expand button
+      const expBtn = document.getElementById('channa-dock-expand-btn');
+      if (expBtn) {
+        expBtn.addEventListener('click', () => {
+          applyDockMode('compact');
+        });
+      }
+
+      // Minimized paste button
+      const minPasteBtn = document.getElementById('channa-dock-min-paste-btn');
+      if (minPasteBtn) {
+        minPasteBtn.addEventListener('click', () => {
+          const stepperPasteBtn = document.getElementById('channa-dock-stepper-paste-btn');
+          if (stepperPasteBtn) stepperPasteBtn.click();
+        });
+      }
+
+      function selectAndPastePrompt(newIndex) {
+        if (localDockPrompts.length === 0) return;
+        activePromptIndex = (newIndex + localDockPrompts.length) % localDockPrompts.length;
+        const item = localDockPrompts[activePromptIndex];
+        const text = getPromptText(item);
+        if (text) {
+          injectPromptIntoDola(text);
+        }
+        renderDockCards();
+        scrollToActiveCard();
+        saveDockPrompts();
+        if (typeof window.__showChannaNotice === 'function') {
+          const activeNum = String(activePromptIndex + 1).padStart(2, '0');
+          window.__showChannaNotice(`📋 Prompt #${activeNum} pasted into prompt box!`, 1500);
+        }
+        if (dock) dock.scrollTop = 0;
+      }
+
+      // Bindings for Stepper Controls - Clicking Prev or Next automatically pastes into prompt box!
+      const stepperPrevBtn = document.getElementById('channa-dock-stepper-prev');
+      const stepperNextBtn = document.getElementById('channa-dock-stepper-next');
+      const stepperPasteBtn = document.getElementById('channa-dock-stepper-paste-btn');
+
+      if (stepperPrevBtn) {
+        stepperPrevBtn.addEventListener('click', () => {
+          if (localDockPrompts.length > 0) {
+            selectAndPastePrompt(activePromptIndex - 1);
+          }
+        });
+      }
+
+      if (stepperNextBtn) {
+        stepperNextBtn.addEventListener('click', () => {
+          if (localDockPrompts.length > 0) {
+            selectAndPastePrompt(activePromptIndex + 1);
+          }
+        });
+      }
+
+      const stepperTitleBox = document.getElementById('channa-dock-stepper-title-box');
+      if (stepperTitleBox) {
+        stepperTitleBox.addEventListener('click', () => {
+          if (localDockPrompts.length > 0 && localDockPrompts[activePromptIndex]) {
+            const text = getPromptText(localDockPrompts[activePromptIndex]);
+            if (text) {
+              injectPromptIntoDola(text);
+              if (typeof window.__showChannaNotice === 'function') {
+                const activeNum = String(activePromptIndex + 1).padStart(2, '0');
+                window.__showChannaNotice(`📋 Prompt #${activeNum} pasted into prompt box!`, 1500);
+              }
+            }
+          }
+        });
+      }
+
+      if (stepperPasteBtn) {
+        stepperPasteBtn.addEventListener('click', () => {
+          if (localDockPrompts.length > 0 && localDockPrompts[activePromptIndex]) {
+            const item = localDockPrompts[activePromptIndex];
+            const text = getPromptText(item);
+            const success = injectPromptIntoDola(text);
+            if (success) {
+              item.done = true;
+              stepperPasteBtn.innerHTML = `✓ PASTED!`;
+              setTimeout(() => {
+                advanceToNextPrompt(activePromptIndex);
+                const nextItem = localDockPrompts[activePromptIndex];
+                if (nextItem) {
+                  const nextText = getPromptText(nextItem);
+                  if (nextText) injectPromptIntoDola(nextText);
+                }
+                saveDockPrompts();
+                renderDockCards();
+                scrollToActiveCard();
+              }, 400);
+              if (typeof window.__showChannaNotice === 'function') {
+                window.__showChannaNotice(`✅ Prompt #${String(activePromptIndex + 1).padStart(2, '0')} pasted into Dola chat!`);
+              }
+            }
+          }
+        });
+      }
+
+      // Filter pills binding
+      const filterPills = dock.querySelectorAll('.channa-dock-filter-pill');
+      filterPills.forEach(pill => {
+        pill.addEventListener('click', () => {
+          dockFilter = pill.dataset.filter || 'all';
+          renderDockCards();
+        });
+      });
+
+      // Auto-advance checkbox
+      const autoAdvChk = document.getElementById('channa-dock-auto-advance-chk');
+      if (autoAdvChk) {
+        autoAdvChk.addEventListener('change', e => {
+          autoAdvanceEnabled = e.target.checked;
+        });
+      }
+
+      // Close button
+      const closeBtn = document.getElementById('channa-dock-close-btn');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+          dock.style.setProperty('display', 'none', 'important');
+          syncPromptDockAndToggle();
+        });
+      }
+
+      // Search box
+      const searchBox = document.getElementById('channa-dock-search-box');
+      if (searchBox) {
+        searchBox.addEventListener('input', (e) => {
+          dockSearchQuery = (e.target.value || '').trim().toLowerCase();
+          renderDockCards();
+        });
+      }
+
+      // Reset Done
+      const resetDoneBtn = document.getElementById('channa-dock-reset-done');
+      if (resetDoneBtn) {
+        resetDoneBtn.addEventListener('click', () => {
+          localDockPrompts.forEach(p => p.done = false);
+          renderDockCards();
+          saveDockPrompts();
+        });
+      }
+
+      // Clear All
+      const clearAllBtn = document.getElementById('channa-dock-clear-all');
+      if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', () => {
+          if (confirm('Clear all prompts from dock?')) {
+            localDockPrompts = [];
+            activePromptIndex = 0;
+            renderDockCards();
+            saveDockPrompts();
+          }
+        });
+      }
+
+      applyDockMode(dockMode);
+    }
+  }
+
+  function scrollToActiveCard() {
+    const dock = document.getElementById('channa-prompt-dock');
+    if (dock && dock.scrollTop !== 0) {
+      dock.scrollTop = 0;
+    }
+
+    const list = document.getElementById('channa-dock-prompt-list');
+    const drawer = document.getElementById('channa-dock-drawer');
+    if (!list || !drawer || drawer.style.display === 'none') {
+      if (dock) dock.scrollTop = 0;
+      return;
+    }
+
+    setTimeout(() => {
+      if (dock && dock.scrollTop !== 0) {
+        dock.scrollTop = 0;
+      }
+      const card = document.getElementById(`channa-dock-card-${activePromptIndex}`);
+      if (card && list) {
+        // Calculate offset strictly inside list container ONLY — never scroll outer dock or page!
+        const cardOffsetTop = card.offsetTop;
+        const cardHeight = card.offsetHeight;
+        const listHeight = list.clientHeight;
+        const targetScroll = cardOffsetTop - (listHeight / 2) + (cardHeight / 2);
+
+        list.scrollTo({
+          top: Math.max(0, targetScroll),
+          behavior: 'smooth'
+        });
+      }
+      if (dock && dock.scrollTop !== 0) {
+        dock.scrollTop = 0;
+      }
+    }, 25);
+  }
+
+  // Delegated click handler for Card actions
+  document.addEventListener('click', (e) => {
+    // 1. Direct Paste Button
+    const pasteBtn = e.target.closest('.channa-dock-paste-btn');
+    if (pasteBtn) {
+      const idx = parseInt(pasteBtn.dataset.idx, 10);
+      if (!isNaN(idx) && localDockPrompts[idx]) {
+        const item = localDockPrompts[idx];
+        const text = getPromptText(item);
+        const success = injectPromptIntoDola(text);
+        if (success) {
+          pasteBtn.textContent = '✓ PASTED!';
+          pasteBtn.style.background = 'linear-gradient(135deg, #059669, #10b981)';
+          item.done = true;
+          activePromptIndex = idx;
+          if (autoAdvanceEnabled) {
+            advanceToNextPrompt(idx);
+          }
+          saveDockPrompts();
+          renderDockCards();
+          if (typeof window.__showChannaNotice === 'function') {
+            window.__showChannaNotice(`✅ Prompt #${String(idx + 1).padStart(2, '0')} pasted into Dola chat!`);
+          }
+        }
+      }
+      return;
+    }
+
+    // 2. Paste & Next Button
+    const pasteNextBtn = e.target.closest('.channa-dock-paste-next-btn');
+    if (pasteNextBtn) {
+      const idx = parseInt(pasteNextBtn.dataset.idx, 10);
+      if (!isNaN(idx) && localDockPrompts[idx]) {
+        const item = localDockPrompts[idx];
+        const text = getPromptText(item);
+        const success = injectPromptIntoDola(text);
+        if (success) {
+          pasteNextBtn.textContent = '✓ PASTED!';
+          item.done = true;
+          advanceToNextPrompt(idx);
+          const nextItem = localDockPrompts[activePromptIndex];
+          if (nextItem) {
+            const nextText = getPromptText(nextItem);
+            if (nextText) injectPromptIntoDola(nextText);
+          }
+          saveDockPrompts();
+          renderDockCards();
+          scrollToActiveCard();
+          if (typeof window.__showChannaNotice === 'function') {
+            window.__showChannaNotice(`✅ Prompt #${String(idx + 1).padStart(2, '0')} pasted! Advanced to #${String(activePromptIndex + 1).padStart(2, '0')}.`);
+          }
+        }
+      }
+      return;
+    }
+
+    // 3. Expand / Collapse text toggle
+    const expandToggle = e.target.closest('.channa-dock-toggle-expand');
+    if (expandToggle) {
+      const idx = parseInt(expandToggle.dataset.idx, 10);
+      if (!isNaN(idx)) {
+        if (expandedCardIndices.has(idx)) {
+          expandedCardIndices.delete(idx);
+        } else {
+          expandedCardIndices.add(idx);
+        }
+        renderDockCards();
+      }
+      return;
+    }
+
+    // 4. Toggle Done status
+    const doneBtn = e.target.closest('.channa-dock-toggle-done-btn');
+    if (doneBtn) {
+      const idx = parseInt(doneBtn.dataset.idx, 10);
+      if (!isNaN(idx) && localDockPrompts[idx]) {
+        localDockPrompts[idx].done = !localDockPrompts[idx].done;
+        saveDockPrompts();
+        renderDockCards();
+      }
+      return;
+    }
+
+    // 5. Delete button
+    const delBtn = e.target.closest('.channa-dock-del-btn');
+    if (delBtn) {
+      const idx = parseInt(delBtn.dataset.idx, 10);
+      if (!isNaN(idx) && localDockPrompts[idx]) {
+        localDockPrompts.splice(idx, 1);
+        if (activePromptIndex >= localDockPrompts.length) {
+          activePromptIndex = Math.max(0, localDockPrompts.length - 1);
+        }
+        saveDockPrompts();
+        renderDockCards();
+      }
+      return;
+    }
+
+    // 6. Card Body Click: Select & Paste into chat prompt box
+    const card = e.target.closest('.channa-dock-card');
+    if (card && !e.target.closest('button') && !e.target.closest('input')) {
+      const cardIdx = parseInt(card.id.replace('channa-dock-card-', ''), 10);
+      if (!isNaN(cardIdx) && localDockPrompts[cardIdx]) {
+        selectAndPastePrompt(cardIdx);
+      }
+      return;
+    }
+  });
+
+  // Cross-world communication
+  window.addEventListener('message', (e) => {
+    if (e.data?.type === 'CTB_SYNC_PROMPTS') {
+      if (Array.isArray(e.data.prompts)) {
+        localDockPrompts = e.data.prompts;
+        ensurePromptDockDOM();
+        renderDockCards();
+        syncPromptDockAndToggle();
+      }
+    }
+    if (e.data?.type === 'CHANNA_PASTE_PROMPT') {
+      const promptText = getPromptText(e.data);
+      if (promptText) {
+        injectPromptIntoDola(promptText);
+        if (typeof window.__showChannaNotice === 'function') {
+          const num = e.data.promptNumber ? `#${String(e.data.promptNumber).padStart(2, '0')} ` : '';
+          window.__showChannaNotice(`✅ Prompt ${num}pasted into chat!`);
+        }
+      }
+    }
+  });
+
+  // Close dock on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const dock = document.getElementById('channa-prompt-dock');
+      if (dock && dock.style.display !== 'none') {
+        dock.style.setProperty('display', 'none', 'important');
+        syncPromptDockAndToggle();
+      }
+    }
+  }, { passive: true });
+
+  // Close dock on outside pointerdown
+  document.addEventListener('pointerdown', (e) => {
+    const dock = document.getElementById('channa-prompt-dock') || document.getElementById('channa-workflow-hud');
+    const toggleBtn = document.getElementById('channa-dock-toggle-btn');
+    if (!dock || dock.style.display === 'none') return;
+    if (!dock.contains(e.target) && (!toggleBtn || !toggleBtn.contains(e.target))) {
+      dock.style.setProperty('display', 'none', 'important');
+      syncPromptDockAndToggle();
+    }
+  }, { passive: true });
+
+  function initPromptDock() {
+    ensurePromptDockDOM();
+    syncPromptDockAndToggle();
+    if (localDockPrompts.length === 0) {
+      window.postMessage({ type: 'CTB_REQUEST_PROMPT_SYNC' }, '*');
+    }
+  }
+
+  initPromptDock();
+  setTimeout(() => window.postMessage({ type: 'CTB_REQUEST_PROMPT_SYNC' }, '*'), 500);
+  setTimeout(() => window.postMessage({ type: 'CTB_REQUEST_PROMPT_SYNC' }, '*'), 1500);
+  setInterval(initPromptDock, 4000);
+  window.addEventListener('DOMContentLoaded', initPromptDock, { passive: true });
+  window.addEventListener('load', initPromptDock, { passive: true });
 })();
 
   // ⚡ DOLA HIGH DEMAND AUTO-BYPASS & ANTI-FLAGGING CONTROLLER
@@ -2567,674 +3732,44 @@ if (typeof window !== 'undefined') {
   })();
 
   // ============================================================================
-  // 🖼️ DUONG THO - REFERENCE IMAGE VAULT & SEEDANCE PRO V3 ATTACHMENT ENGINE
-  // (Ported from Seedance Pro Tho - V3: silent DOM activation + DataTransfer injection)
+  // 🎭 IN-PAGE ACTOR VAULT COMPOSER PILL & QUICK POPOVER (MUKAMMAL)
   // ============================================================================
   (() => {
     'use strict';
 
-    const DB_NAME = 'duongtho_ref_images_db';
-    const DB_VERSION = 1;
-    const STORE_NAME = 'images';
-    const COMPOSER_SELECTOR = 'textarea, [contenteditable]:not([contenteditable="false"]), [role="textbox"], input[type="text"]';
-    const ACTIVATION_CONTROL_SELECTOR = 'button, [role="button"], label[for], [tabindex="0"]';
-
-    let dbPromise = null;
-    let cachedImages = [];
-
-    // --- 1. IndexedDB Helper Functions ---
-    function openRefDb() {
-      if (dbPromise) return dbPromise;
-      dbPromise = new Promise((resolve, reject) => {
-        try {
-          const req = indexedDB.open(DB_NAME, DB_VERSION);
-          req.onupgradeneeded = () => {
-            const db = req.result;
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
-              db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-            }
-          };
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => reject(req.error || new Error('Cannot open IndexedDB'));
-        } catch (e) {
-          reject(e);
-        }
-      });
-      return dbPromise;
-    }
-
-    async function dbGetAllImages() {
-      try {
-        const db = await openRefDb();
-        return new Promise((resolve, reject) => {
-          const tx = db.transaction(STORE_NAME, 'readonly');
-          const store = tx.objectStore(STORE_NAME);
-          const req = store.getAll();
-          req.onsuccess = () => resolve(req.result || []);
-          req.onerror = () => reject(req.error);
-        });
-      } catch (e) {
-        console.warn('[DuongTho RefDB] Fallback to memory:', e);
-        return cachedImages;
-      }
-    }
-
-    async function dbSaveImage(record) {
-      try {
-        const db = await openRefDb();
-        return new Promise((resolve, reject) => {
-          const tx = db.transaction(STORE_NAME, 'readwrite');
-          const store = tx.objectStore(STORE_NAME);
-          store.put(record);
-          tx.oncomplete = () => resolve();
-          tx.onerror = () => reject(tx.error);
-        });
-      } catch (e) {
-        console.warn('[DuongTho RefDB] Save error:', e);
-      }
-    }
-
-    async function dbDeleteImage(id) {
-      try {
-        const db = await openRefDb();
-        return new Promise((resolve, reject) => {
-          const tx = db.transaction(STORE_NAME, 'readwrite');
-          const store = tx.objectStore(STORE_NAME);
-          store.delete(id);
-          tx.oncomplete = () => resolve();
-          tx.onerror = () => reject(tx.error);
-        });
-      } catch (e) {
-        console.warn('[DuongTho RefDB] Delete error:', e);
-      }
-    }
-
-    async function dbClearAllImages() {
-      try {
-        const db = await openRefDb();
-        return new Promise((resolve, reject) => {
-          const tx = db.transaction(STORE_NAME, 'readwrite');
-          const store = tx.objectStore(STORE_NAME);
-          store.clear();
-          tx.oncomplete = () => resolve();
-          tx.onerror = () => reject(tx.error);
-        });
-      } catch (e) {
-        console.warn('[DuongTho RefDB] Clear error:', e);
-      }
-    }
-
-    // --- 2. Seedance Pro V3 Silent Attachment Engine ---
-    function queryAllDeep(selector) {
-      const results = [];
-      const roots = [document];
-      while (roots.length) {
-        const root = roots.shift();
-        let elements = [];
-        try { elements = Array.from(root.querySelectorAll(selector)); } catch {}
-        results.push(...elements);
-        let descendants = [];
-        try { descendants = root.querySelectorAll('*'); } catch {}
-        descendants.forEach(el => {
-          if (el.shadowRoot) roots.push(el.shadowRoot);
-        });
-      }
-      return Array.from(new Set(results));
-    }
-
-    function isVisible(el) {
-      if (!el || !(el instanceof Element)) return false;
-      const style = getComputedStyle(el);
-      if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
-      const r = el.getBoundingClientRect();
-      return r.width > 0 && r.height > 0;
-    }
-
-    function controlIdentity(el) {
-      if (!el) return '';
-      return [
-        el.id,
-        el.getAttribute?.('name'),
-        el.getAttribute?.('aria-label'),
-        el.getAttribute?.('title'),
-        el.getAttribute?.('data-testid'),
-        el.getAttribute?.('data-tooltip-content'),
-        String(el.className || ''),
-        String(el.textContent || '')
-      ].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().toLowerCase();
-    }
-
-    function findComposerTarget() {
-      const candidates = queryAllDeep(COMPOSER_SELECTOR)
-        .filter(el => !el.closest?.('#duongtho-ref-popover') && !el.closest?.('#channa-prompt-dock'))
-        .filter(isVisible)
-        .map((element, index) => {
-          const rect = element.getBoundingClientRect();
-          const identity = [
-            element.getAttribute('placeholder'),
-            element.getAttribute('aria-label'),
-            element.getAttribute('data-placeholder'),
-            element.getAttribute('data-testid')
-          ].filter(Boolean).join(' ').toLowerCase();
-          let score = 1;
-          if (/describe|prompt|image|video|message|action|create/.test(identity)) score += 100;
-          if (element.matches('[contenteditable]:not([contenteditable="false"]), [role="textbox"]')) score += 20;
-          if (rect.bottom >= window.innerHeight * 0.4) score += 30;
-          if (rect.width >= Math.min(240, window.innerWidth * 0.3)) score += 15;
-          return { element, index, score };
-        })
-        .sort((a, b) => (b.score - a.score) || (a.index - b.index));
-      return candidates[0]?.element || null;
-    }
-
-    function findComposerSurface(target) {
-      if (!(target instanceof Element)) return null;
-      let current = target;
-      let best = target;
-      for (let depth = 0; current && depth < 10; depth += 1) {
-        const rect = current.getBoundingClientRect();
-        const hasEditor = current.matches?.(COMPOSER_SELECTOR) || Boolean(current.querySelector?.(COMPOSER_SELECTOR));
-        if (hasEditor && rect.width >= 200 && rect.height >= 24 && rect.height <= 600) best = current;
-        if (rect.height > 600) break;
-        current = current.parentElement || current.getRootNode?.().host || null;
-      }
-      return best;
-    }
-
-    function isInputLinked(input, surface, target) {
-      if (surface?.contains?.(input) || input.form?.contains?.(target)) return true;
-      let current = input.parentElement || input.getRootNode?.().host || null;
-      for (let depth = 0; current && depth < 8; depth += 1) {
-        if (target && current.contains?.(target)) return true;
-        current = current.parentElement || current.getRootNode?.().host || null;
-      }
-      return false;
-    }
-
-    function findBestImageInput(surface, target) {
-      const candidates = queryAllDeep('input[type="file"]')
-        .filter(input => !input.disabled)
-        .map((input, index) => {
-          const accept = String(input.getAttribute('accept') || '').toLowerCase();
-          const identity = controlIdentity(input);
-          const explicitImage = /image\//.test(accept) || /\.(?:avif|gif|jpe?g|png|webp)/.test(accept);
-          const imageIdentity = /image|photo|picture|reference|attachment|upload/.test(identity);
-          const profileIdentity = /avatar|profile|logo|cover/.test(identity);
-          const linked = isInputLinked(input, surface, target);
-
-          if (/video\//.test(accept) && !/image\//.test(accept)) return { input, index, score: -1000 };
-          if (/audio\//.test(accept) && !/image\//.test(accept)) return { input, index, score: -1000 };
-          if (profileIdentity) return { input, index, score: -1000 };
-          if (!explicitImage && !imageIdentity && !linked) return { input, index, score: -1000 };
-
-          let score = 0;
-          if (explicitImage) score += 180;
-          if (imageIdentity) score += 70;
-          if (linked) score += 110;
-          if (input.multiple) score += 5;
-          return { input, index, score };
-        })
-        .filter(c => c.score >= 120)
-        .sort((a, b) => (b.score - a.score) || (a.index - b.index));
-      return candidates[0]?.input || null;
-    }
-
-    function findComposerAddControl(surface, target) {
-      const surfaceRect = surface.getBoundingClientRect();
-      const candidates = queryAllDeep('button, [role="button"], label[for]')
-        .filter(el => !el.closest?.('#duongtho-ref-popover') && !el.closest?.('#channa-prompt-dock'))
-        .filter(isVisible)
-        .map((element, index) => {
-          const identity = controlIdentity(element);
-          const text = String(element.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-          if (/create\s*(?:images?|videos?)|generate|send|submit|download|model|style|template|ratio|translate|avatar|profile/.test(identity)) {
-            return { element, index, score: -1000 };
-          }
-          const rect = element.getBoundingClientRect();
-          const linked = surface.contains(element) || element.contains(target) ||
-            (rect.right >= surfaceRect.left - 32 && rect.left <= surfaceRect.right + 32 &&
-             rect.bottom >= surfaceRect.top - 32 && rect.top <= surfaceRect.bottom + 32);
-          if (!linked) return { element, index, score: -1000 };
-
-          let score = 0;
-          if (text === '+') score += 360;
-          if (/\bplus\b|(?:^|\s)add(?:\s|$)|add\s*(?:attachment|file|image|photo)|attach|upload/.test(identity)) score += 300;
-          if (surface.contains(element)) score += 150;
-          if (rect.width <= 72 && rect.height <= 72) score += 50;
-          if (rect.left <= surfaceRect.left + surfaceRect.width * 0.35) score += 90;
-          return { element, index, score };
-        })
-        .filter(c => c.score >= 190)
-        .sort((a, b) => (b.score - a.score) || (a.index - b.index));
-      return candidates[0]?.element || null;
-    }
-
-    function findUploadMenuControl(beforeControls, plusControl, surface) {
-      const plusRect = plusControl.getBoundingClientRect();
-      const candidates = queryAllDeep(ACTIVATION_CONTROL_SELECTOR)
-        .filter(el => el !== plusControl && !el.closest?.('#duongtho-ref-popover'))
-        .filter(isVisible)
-        .map((element, index) => {
-          const identity = controlIdentity(element);
-          if (!/upload|attach|image|photo|picture|file|gallery|computer|device/.test(identity)) return { element, index, score: -1000 };
-          if (/create|generate|camera|video|audio|avatar|profile|logo|send/.test(identity)) return { element, index, score: -1000 };
-
-          let score = 0;
-          if (!beforeControls.has(element)) score += 220;
-          if (/upload|attach|choose\s*file|select\s*file/.test(identity)) score += 240;
-          if (/image|photo|picture|file|gallery/.test(identity)) score += 150;
-          if (element.matches('label[for]')) score += 80;
-          if (element.querySelector?.('input[type="file"]')) score += 260;
-          const rect = element.getBoundingClientRect();
-          const dist = Math.hypot(rect.left - plusRect.left, rect.top - plusRect.top);
-          if (dist <= 450) score += 70;
-          return { element, index, score };
-        })
-        .filter(c => c.score >= 180)
-        .sort((a, b) => (b.score - a.score) || (a.index - b.index));
-      return candidates[0]?.element || null;
-    }
-
-    function installSilentFileChooserGuard() {
-      let capturedInput = null;
-      const inputPrototype = HTMLInputElement.prototype;
-      const originalShowPicker = inputPrototype.showPicker;
-      let showPickerPatched = false;
-
-      const interceptFileClick = event => {
-        const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
-        const input = path.find(node => node instanceof HTMLInputElement && node.type === 'file');
-        if (!input || event.isTrusted) return;
-        capturedInput = input;
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      };
-      document.addEventListener('click', interceptFileClick, true);
-
-      if (typeof originalShowPicker === 'function') {
-        try {
-          inputPrototype.showPicker = function silentShowPicker() {
-            if (this instanceof HTMLInputElement && this.type === 'file') {
-              capturedInput = this;
-              return undefined;
-            }
-            return originalShowPicker.call(this);
-          };
-          showPickerPatched = true;
-        } catch {}
-      }
-
-      return {
-        getCapturedInput: () => capturedInput,
-        restore: () => {
-          document.removeEventListener('click', interceptFileClick, true);
-          if (showPickerPatched) {
-            try { inputPrototype.showPicker = originalShowPicker; } catch {}
-          }
-        }
-      };
-    }
-
-    function activateControlOnce(element) {
-      if (!(element instanceof Element)) return;
-      const rect = element.getBoundingClientRect();
-      const clientX = Math.round(rect.left + Math.max(1, rect.width / 2));
-      const clientY = Math.round(rect.top + Math.max(1, rect.height / 2));
-      try { element.focus({ preventScroll: true }); } catch {}
-
-      const shared = { bubbles: true, cancelable: true, composed: true, view: window, clientX, clientY, button: 0 };
-      if (typeof PointerEvent === 'function') {
-        element.dispatchEvent(new PointerEvent('pointerdown', { ...shared, buttons: 1, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
-      }
-      element.dispatchEvent(new MouseEvent('mousedown', { ...shared, buttons: 1 }));
-      if (typeof PointerEvent === 'function') {
-        element.dispatchEvent(new PointerEvent('pointerup', { ...shared, buttons: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
-      }
-      element.dispatchEvent(new MouseEvent('mouseup', { ...shared, buttons: 0 }));
-
-      if (typeof element.click === 'function') element.click();
-      else element.dispatchEvent(new MouseEvent('click', { ...shared, buttons: 0, detail: 1 }));
-    }
-
-    async function waitForActivatedImageInput(beforeInputs, surface, target, guard, timeoutMs = 1500) {
-      const deadline = Date.now() + timeoutMs;
-      while (Date.now() < deadline) {
-        const captured = guard.getCapturedInput();
-        if (captured) return captured;
-        const candidates = queryAllDeep('input[type="file"]')
-          .filter(input => !input.disabled)
-          .map((input, index) => {
-            const accept = String(input.getAttribute('accept') || '').toLowerCase();
-            const identity = controlIdentity(input);
-            const explicitImage = /image\//.test(accept) || /\.(?:avif|gif|jpe?g|png|webp)/.test(accept);
-            const imageIdentity = /image|photo|picture|attachment|upload|file/.test(identity);
-            let score = 0;
-            if (input === captured) score += 1000;
-            if (!beforeInputs.has(input)) score += 360;
-            if (explicitImage) score += 220;
-            if (imageIdentity) score += 120;
-            return { input, index, score };
-          })
-          .filter(c => c.score >= 140)
-          .sort((a, b) => (b.score - a.score) || (a.index - b.index));
-        if (candidates[0]?.input) return candidates[0].input;
-        await new Promise(r => setTimeout(r, 60));
-      }
-      return null;
-    }
-
-    function assignFileOnce(input, file) {
-      const transfer = new DataTransfer();
-      transfer.items.add(file);
-      if (transfer.files.length !== 1) throw new Error('DataTransfer could not prepare file list');
-
-      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files');
-      if (descriptor?.set) {
-        descriptor.set.call(input, transfer.files);
-      } else {
-        input.files = transfer.files;
-      }
-      input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-    }
-
-    async function silentlyActivateAndAssign(file, surface, target) {
-      const beforeInputs = new Set(queryAllDeep('input[type="file"]'));
-      const beforeControls = new Set(queryAllDeep(ACTIVATION_CONTROL_SELECTOR));
-      const guard = installSilentFileChooserGuard();
-      const plusControl = findComposerAddControl(surface, target);
-
-      if (!plusControl) {
-        guard.restore();
-        throw new Error('Dola plus/add button was not found in active composer.');
-      }
-
-      try {
-        activateControlOnce(plusControl);
-        let input = await waitForActivatedImageInput(beforeInputs, surface, target, guard, 700);
-        if (!input) {
-          const uploadControl = findUploadMenuControl(beforeControls, plusControl, surface);
-          if (uploadControl) {
-            activateControlOnce(uploadControl);
-            input = await waitForActivatedImageInput(beforeInputs, surface, target, guard, 1200);
-          }
-        }
-
-        if (!input) {
-          throw new Error('Could not find Dola image upload input after activating composer menu.');
-        }
-
-        assignFileOnce(input, file);
-        await new Promise(r => setTimeout(r, 200));
-        return input;
-      } finally {
-        guard.restore();
-      }
-    }
-
-    function dataUrlToFile(dataUrl, name = 'reference-image.png') {
-      if (typeof dataUrl !== 'string' || !dataUrl.includes(',')) {
-        throw new Error('Invalid data URL');
-      }
-      const parts = dataUrl.split(',');
-      const match = parts[0].match(/:(.*?);/);
-      const mime = match ? match[1] : 'image/png';
-      const bstr = atob(parts[1]);
-      let n = bstr.length;
-      const u8arr = new Uint8Array(n);
-      while (n--) {
-        u8arr[n] = bstr.charCodeAt(n);
-      }
-      return new File([u8arr], name, { type: mime, lastModified: Date.now() });
-    }
-
-    /**
-     * Tiền xử lý cấu trúc ảnh qua Canvas (Xóa EXIF/Metadata, thêm vi nhiễu, chống quét lọc AI)
-     * @param {File} file - File ảnh gốc
-     * @returns {Promise<File>} File ảnh mới đã được tái cấu trúc hoàn toàn
-     */
-    async function processBypassImage(file) {
-      return new Promise((resolve, reject) => {
-        try {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-              try {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                if (!ctx) {
-                  return resolve(file); // Fallback nếu không tạo được context
-                }
-
-                // 1. Phá Perceptual Hash: Co lệch 1px nếu là số chẵn
-                const w = Math.max(1, img.naturalWidth - (img.naturalWidth % 2 === 0 ? 1 : 0));
-                const h = Math.max(1, img.naturalHeight - (img.naturalHeight % 2 === 0 ? 1 : 0));
-                canvas.width = w;
-                canvas.height = h;
-
-                // 2. Vẽ lại ảnh (Canvas tự động triệt tiêu toàn bộ EXIF, GPS, thiết bị gốc)
-                ctx.drawImage(img, 0, 0, w, h);
-
-                // 3. Bơm Micro-Noise (nhiễu vi hạt siêu nhỏ phá vỡ mã MD5 & feature vector AI)
-                try {
-                  const imgData = ctx.getImageData(0, 0, w, h);
-                  const data = imgData.data;
-                  const totalPixels = w * h;
-
-                  for (let i = 0; i < totalPixels; i += 3) {
-                    const offset = i * 4;
-                    const noise = (Math.random() - 0.5) * 4;
-                    data[offset] = Math.min(255, Math.max(0, data[offset] + noise));         // R
-                    data[offset + 1] = Math.min(255, Math.max(0, data[offset + 1] + noise)); // G
-                    data[offset + 2] = Math.min(255, Math.max(0, data[offset + 2] + noise)); // B
-                  }
-                  ctx.putImageData(imgData, 0, 0);
-                } catch(noiseErr) {
-                  console.warn('[Bypass Process] Bỏ qua bước micro-noise (CORS/safe):', noiseErr);
-                }
-
-                // 4. Phủ 1 lớp gradient cực mỏng (alpha ~0.004)
-                const gradient = ctx.createRadialGradient(w / 2, h / 2, 5, w / 2, h / 2, Math.max(w, h));
-                gradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
-                gradient.addColorStop(1, 'rgba(240, 240, 240, 0.004)');
-                ctx.fillStyle = gradient;
-                ctx.fillRect(0, 0, w, h);
-
-                // 5. Xuất File mới với tên ngẫu nhiên
-                const mimeType = (file.type === 'image/png') ? 'image/png' : 'image/jpeg';
-                canvas.toBlob((blob) => {
-                  if (!blob) return resolve(file);
-                  const ext = (mimeType === 'image/png') ? 'png' : 'jpg';
-                  const newFileName = `ref_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
-                  const processedFile = new File([blob], newFileName, {
-                    type: mimeType,
-                    lastModified: Date.now()
-                  });
-                  console.log('[Bypass Process] Xử lý thành công ảnh mới:', newFileName, `(${w}x${h})`);
-                  resolve(processedFile);
-                }, mimeType, 0.96);
-              } catch (innerErr) {
-                console.warn('[Bypass Process] Lỗi xử lý canvas, dùng file gốc:', innerErr);
-                resolve(file);
-              }
-            };
-            img.onerror = () => {
-              console.warn('[Bypass Process] Lỗi nạp img, dùng file gốc');
-              resolve(file);
-            };
-            img.src = e.target.result;
-          };
-          reader.onerror = () => {
-            console.warn('[Bypass Process] Lỗi đọc file, dùng file gốc');
-            resolve(file);
-          };
-          reader.readAsDataURL(file);
-        } catch(topErr) {
-          console.warn('[Bypass Process] Exception:', topErr);
-          resolve(file);
-        }
-      });
-    }
-
-    /**
-     * Tự động gán File vào Dola mà không làm mở cửa sổ chọn file của OS
-     * @param {File} file - File ảnh đã qua xử lý lách
-     * @returns {Promise<boolean>}
-     */
-    async function injectFileIntoDola(file) {
-      // 1. Quét tìm input file sẵn có trong khu vực soạn thảo của Dola
-      let fileInput = document.querySelector('input[type="file"][accept*="image"]') 
-                   || document.querySelector('input[type="file"]');
-
-      // 2. Nếu Dola lazy-load (chưa render input ra DOM), kích hoạt nút "+"
-      if (!fileInput) {
-        const plusButton = Array.from(document.querySelectorAll('button, div[role="button"]')).find(btn => {
-          const text = (btn.textContent || '').trim();
-          const aria = btn.getAttribute('aria-label') || '';
-          return text === '+' || aria.includes('Upload') || aria.includes('image') || (btn.querySelector('svg') && aria.includes('Add'));
-        });
-
-        if (plusButton) {
-          const origShowPicker = HTMLInputElement.prototype.showPicker;
-          HTMLInputElement.prototype.showPicker = function() { return; };
-
-          plusButton.click();
-          await new Promise(resolve => setTimeout(resolve, 200));
-
-          HTMLInputElement.prototype.showPicker = origShowPicker;
-          fileInput = document.querySelector('input[type="file"][accept*="image"]') || document.querySelector('input[type="file"]');
-        }
-      }
-
-      if (!fileInput) {
-        return false;
-      }
-
-      // 3. Cơ chế DataTransfer: Nhúng trực tiếp File vào thuộc tính files của input
-      const dataTransfer = new DataTransfer();
-      dataTransfer.items.add(file);
-
-      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files');
-      if (descriptor?.set) {
-        descriptor.set.call(fileInput, dataTransfer.files);
-      } else {
-        fileInput.files = dataTransfer.files;
-      }
-
-      // 4. Bắn sự kiện DOM để React / Vue của Dola cập nhật state
-      fileInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-      fileInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
-
-      await new Promise(resolve => setTimeout(resolve, 500));
-      console.log('[Dola Injector] Gắn ảnh thành công vào Dola:', file.name);
-      return true;
-    }
-
-    // Master function to attach image to Dola
-    async function duongThoAttachReferenceImage(fileOrBlobOrDataUrl, name = 'reference-image.png') {
-      let rawFile;
-      if (fileOrBlobOrDataUrl instanceof File) {
-        rawFile = fileOrBlobOrDataUrl;
-      } else if (fileOrBlobOrDataUrl instanceof Blob) {
-        rawFile = new File([fileOrBlobOrDataUrl], name, { type: fileOrBlobOrDataUrl.type || 'image/png', lastModified: Date.now() });
-      } else if (typeof fileOrBlobOrDataUrl === 'string') {
-        rawFile = dataUrlToFile(fileOrBlobOrDataUrl, name);
-      } else {
-        throw new Error('Unsupported image payload for attachment.');
-      }
-
-      // BẮT BUỘC: Đưa file qua code tiền xử lý Canvas (Xóa EXIF, phá pHash, thêm vi nhiễu)
-      let file = rawFile;
-      try {
-        console.log('[Dola Pipeline] Đang qua tầng xử lý lách kiểm duyệt Canvas:', rawFile.name);
-        file = await processBypassImage(rawFile);
-      } catch (procErr) {
-        console.warn('[Dola Pipeline] Tiền xử lý thất bại, tiếp tục với file ban đầu:', procErr);
-        file = rawFile;
-      }
-
-      // Chiến lược 1: Thử nghiệm injectFileIntoDola trực tiếp
-      try {
-        const injected = await injectFileIntoDola(file);
-        if (injected) {
-          return { success: true, fileName: file.name, method: 'direct-input-inject' };
-        }
-      } catch(injErr) {
-        console.warn('[Dola Pipeline] Direct inject warning:', injErr);
-      }
-
-      // Chiến lược 2: Fallback qua cơ chế deep-surface finder
-      const target = findComposerTarget();
-      if (!target) throw new Error('Dola chat composer input not found. Vui lòng mở trang chat Dola.');
-      const surface = findComposerSurface(target) || target;
-
-      const existingInput = findBestImageInput(surface, target);
-      if (existingInput) {
-        assignFileOnce(existingInput, file);
-        return { success: true, fileName: file.name, method: 'existing-input' };
-      }
-
-      await silentlyActivateAndAssign(file, surface, target);
-      return { success: true, fileName: file.name, method: 'silent-plus-activation' };
-    }
-
-    window.processBypassImage = processBypassImage;
-    window.injectFileIntoDola = injectFileIntoDola;
-    window.duongThoAttachReferenceImage = duongThoAttachReferenceImage;
-
-    // Global native image handler (directly invoked by Android bridge)
-    window.__duongThoAddImagesFromNative = async function(imagesList) {
-      if (!Array.isArray(imagesList) || !imagesList.length) return;
-      console.log('[Native Image Upload] Received images:', imagesList.length);
-
-      try {
-        for (const rec of imagesList) {
-          if (typeof dbSaveImage === 'function') {
-            await dbSaveImage(rec);
-          }
-        }
-      } catch(e) {}
-
-      let attachSuccess = false;
-      try {
-        const first = imagesList[0];
-        if (first && first.dataUrl) {
-          const res = await duongThoAttachReferenceImage(first.dataUrl, first.name || 'reference.png');
-          if (res && res.success) {
-            attachSuccess = true;
-            if (typeof window.__showChannaNotice === 'function') {
-              window.__showChannaNotice(`✅ Đã gắn ảnh tham chiếu: "${first.name || 'Ảnh'}" vào Dola!`, 4000);
-            }
-          }
-        }
-      } catch(attachErr) {
-        console.warn('[Auto Attach] Direct attach exception:', attachErr);
-      }
-
-      if (!attachSuccess && typeof window.__showChannaNotice === 'function') {
-        window.__showChannaNotice(`📸 Đã nạp ${imagesList.length} ảnh tham chiếu từ điện thoại!`, 3500);
-      }
-
-      try {
-        const listBox = document.getElementById('duongtho-ref-list');
-        if (listBox && typeof renderRefList === 'function') {
-          cachedImages = await dbGetAllImages();
-          renderRefList(listBox, cachedImages);
-        }
-        if (typeof syncRefDockButton === 'function') {
-          syncRefDockButton();
-        }
-      } catch(e) {}
-    };
-
-    // --- 3. Reference Image UI & Mobile Dock ---
-    function injectRefStyles() {
-      if (document.getElementById('duongtho-ref-styles')) return;
+    // Inject In-Page Button Styles
+    function injectActorStyles() {
+      if (document.getElementById('channa-actor-styles')) return;
       const style = document.createElement('style');
-      style.id = 'duongtho-ref-styles';
+      style.id = 'channa-actor-styles';
       style.textContent = `
-        #duongtho-ref-dock-btn {
+        div[class*="chat-input"], form, div:has(> #flow-end-msg-send) {
+          max-width: 100% !important;
+          box-sizing: border-box !important;
+        }
+        #channa-actor-ref-btn, #channa-video-ref-btn {
+          display: inline-flex !important;
+          align-items: center !important;
+          gap: 3px !important;
+          border-radius: 9999px !important;
+          padding: 2.5px 8px !important;
+          font-size: 10.5px !important;
+          font-weight: 700 !important;
+          cursor: pointer !important;
+          transition: all 0.2s ease !important;
+          user-select: none !important;
+          margin-left: 4px !important;
+          flex-shrink: 0 !important;
+          white-space: nowrap !important;
+          max-width: 95px !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          box-sizing: border-box !important;
+        }
+        #channa-actor-ref-btn {
+          display: none !important;
+        }
+        #channa-actor-dock-btn {
           position: fixed !important;
           top: 50% !important;
           right: 0px !important;
@@ -3243,7 +3778,7 @@ if (typeof window !== 'undefined') {
           transform: translateY(-50%) !important;
           border-radius: 14px 0 0 14px !important;
           z-index: 999999 !important;
-          background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%) !important;
+          background: linear-gradient(135deg, #db2777 0%, #7c3aed 100%) !important;
           border: 1px solid rgba(244, 114, 182, 0.6) !important;
           border-right: none !important;
           color: #ffffff !important;
@@ -3252,278 +3787,664 @@ if (typeof window !== 'undefined') {
           display: flex !important;
           align-items: center !important;
           gap: 6px !important;
-          box-shadow: -4px 0 20px rgba(0, 0, 0, 0.65), -2px 0 10px rgba(236, 72, 153, 0.5) !important;
-          transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+          box-shadow: -4px 0 20px rgba(0, 0, 0, 0.65), -2px 0 10px rgba(219, 39, 119, 0.5) !important;
+          transition: transform 0.2s ease, right 0.2s ease, box-shadow 0.2s ease !important;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
           user-select: none !important;
         }
-        #duongtho-ref-dock-btn:hover {
+        #channa-actor-dock-btn:hover {
           transform: translateY(-50%) scale(1.04) !important;
-          box-shadow: -6px 0 28px rgba(236, 72, 153, 0.75) !important;
+          box-shadow: -6px 0 28px rgba(219, 39, 119, 0.75) !important;
         }
-        #duongtho-ref-popover {
+        #channa-video-ref-btn {
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          background: rgba(56, 189, 248, 0.12) !important;
+          border: 1px solid rgba(56, 189, 248, 0.55) !important;
+          color: #38bdf8 !important;
+          border-radius: 50% !important;
+          width: 24px !important;
+          height: 24px !important;
+          min-width: 24px !important;
+          max-width: 24px !important;
+          padding: 0 !important;
+          font-size: 12.5px !important;
+          cursor: pointer !important;
+          user-select: none !important;
+          margin-left: 5px !important;
+          box-shadow: 0 1px 6px rgba(56, 189, 248, 0.2) !important;
+          transition: all 0.2s ease !important;
+          flex-shrink: 0 !important;
+          position: relative !important;
+          z-index: 99999 !important;
+          pointer-events: auto !important;
+        }
+        #channa-video-ref-btn:hover {
+          background: rgba(56, 189, 248, 0.25) !important;
+          border-color: #38bdf8 !important;
+          color: #ffffff !important;
+          transform: scale(1.1) !important;
+          box-shadow: 0 0 12px rgba(56, 189, 248, 0.5) !important;
+        }
+        .channa-actor-popover {
           position: fixed !important;
-          background: rgba(15, 12, 27, 0.97) !important;
+          background: rgba(15, 12, 27, 0.96) !important;
           border: 1px solid rgba(244, 114, 182, 0.45) !important;
-          box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 15px rgba(236, 72, 153, 0.25) !important;
+          box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7), 0 0 15px rgba(236, 72, 153, 0.25) !important;
           border-radius: 14px !important;
           padding: 12px !important;
-          width: 320px !important;
-          max-width: calc(100vw - 40px) !important;
-          max-height: 75vh !important;
+          min-width: 260px !important;
+          max-width: 320px !important;
           z-index: 2147483647 !important;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-          backdrop-filter: blur(14px) !important;
-          color: #f1f5f9 !important;
-          box-sizing: border-box !important;
-          display: flex !important;
-          flex-direction: column !important;
+          backdrop-filter: blur(12px) !important;
         }
-        .duongtho-ref-item {
+        .channa-actor-item {
           display: flex !important;
           align-items: center !important;
           gap: 10px !important;
-          padding: 8px !important;
+          padding: 7px 10px !important;
           border-radius: 9px !important;
-          background: rgba(255, 255, 255, 0.04) !important;
-          border: 1px solid rgba(255, 255, 255, 0.08) !important;
-          margin-bottom: 6px !important;
-          box-sizing: border-box !important;
-        }
-        .duongtho-ref-thumb {
-          width: 44px !important;
-          height: 44px !important;
-          border-radius: 8px !important;
-          object-fit: cover !important;
-          border: 1px solid rgba(244, 114, 182, 0.5) !important;
-          flex-shrink: 0 !important;
-        }
-        .duongtho-ref-btn-attach {
-          background: linear-gradient(135deg, #ec4899, #db2777) !important;
-          color: #ffffff !important;
-          border: none !important;
-          border-radius: 6px !important;
-          padding: 4px 8px !important;
-          font-size: 10px !important;
-          font-weight: 700 !important;
           cursor: pointer !important;
-          display: inline-flex !important;
-          align-items: center !important;
-          gap: 3px !important;
-          white-space: nowrap !important;
+          transition: all 0.15s ease !important;
+          border: 1px solid transparent !important;
+          margin-bottom: 4px !important;
         }
-        .duongtho-ref-btn-attach:active {
-          transform: scale(0.96) !important;
+        .channa-actor-item:hover {
+          background: rgba(236, 72, 153, 0.15) !important;
+          border-color: rgba(244, 114, 182, 0.3) !important;
+        }
+        .channa-actor-item.active {
+          background: rgba(236, 72, 153, 0.25) !important;
+          border-color: #ec4899 !important;
         }
       `;
-      (document.head || document.documentElement).appendChild(style);
+      document.head.appendChild(style);
     }
 
-    function formatBytes(bytes) {
-      if (!bytes || isNaN(bytes)) return '0 B';
-      if (bytes < 1024) return bytes + ' B';
-      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    let injectedActorVault = null;
+
+    window.addEventListener('message', (e) => {
+      if (e.data?.type === 'CTB_SYNC_ACTOR_VAULT_PAYLOAD' && e.data.vault) {
+        injectedActorVault = e.data.vault;
+        window.__CHANNA_ACTOR_VAULT__ = e.data.vault;
+        syncActorComposerButton();
+      }
+    });
+
+    // Request initial vault
+    window.postMessage({ type: 'CTB_REQUEST_ACTOR_VAULT' }, '*');
+
+    function safeEscapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[m]);
     }
 
-    function renderRefList(container, images) {
-      if (!container) return;
-      if (!images || images.length === 0) {
-        container.innerHTML = `
-          <div style="padding: 24px 12px; text-align: center; color: #94a3b8; font-size: 11.5px; border: 1px dashed rgba(255,255,255,0.15); border-radius: 8px;">
-            <div style="font-size: 24px; margin-bottom: 6px;">🖼️</div>
-            Chưa có ảnh tham chiếu.<br>
-            Bấm <span style="color: #f472b6; font-weight: 700;">➕ Thêm ảnh từ máy</span> để chọn ảnh!
-          </div>
-        `;
-        return;
+    function getActorVault() {
+      return window.__CHANNA_ACTOR_VAULT__ || injectedActorVault || null;
+    }
+
+    // Hook into prompts for auto-injecting DNA
+    function applyDnaToPromptInjected(text) {
+      if (!text || typeof text !== 'string') return text;
+      const vault = getActorVault();
+      if (!vault || !vault.activeCharacterId || vault.autoInjectDNA === false) return text;
+      const actor = (vault.characters || []).find(c => c.id === vault.activeCharacterId);
+      if (!actor || !actor.dnaTokens) return text;
+      const dna = actor.dnaTokens.trim();
+      if (!dna || text.includes(dna) || (actor.name && text.toLowerCase().includes(actor.name.toLowerCase()))) {
+        return text;
+      }
+      return `[Character DNA: ${dna}] ${text.trim()}`;
+    }
+    window.__applyCharacterDna = applyDnaToPromptInjected;
+
+    // Mount Actor Vault button outside chatbox underneath the prompt dock
+    function syncActorComposerButton() {
+      injectActorStyles();
+
+      // 1. Permanently remove old button from composer toolbar if present (keeps chat box 100% clean)
+      const oldComposerBtn = document.getElementById('channa-actor-ref-btn');
+      if (oldComposerBtn) oldComposerBtn.remove();
+
+      // 2. Mount companion floating dock button directly below #channa-dock-toggle-btn
+      let actorDockBtn = document.getElementById('channa-actor-dock-btn');
+      if (!actorDockBtn || !actorDockBtn.isConnected) {
+        if (actorDockBtn) actorDockBtn.remove();
+        actorDockBtn = document.createElement('button');
+        actorDockBtn.id = 'channa-actor-dock-btn';
+        actorDockBtn.type = 'button';
+        actorDockBtn.title = '🎭 Quản lý nhân vật & Ảnh tham chiếu';
+
+        actorDockBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openActorQuickPopover(actorDockBtn);
+        };
+
+        (document.body || document.documentElement).appendChild(actorDockBtn);
       }
 
-      container.innerHTML = images.map(img => `
-        <div class="duongtho-ref-item" data-img-id="${img.id}">
-          <img src="${img.dataUrl}" class="duongtho-ref-thumb" alt="${img.name}" />
-          <div style="flex: 1; min-width: 0;">
-            <div style="font-size: 11.5px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${img.name}</div>
-            <div style="font-size: 9.5px; color: #94a3b8;">${formatBytes(img.size)}</div>
-          </div>
-          <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
-            <button type="button" class="duongtho-ref-btn-attach" data-img-id="${img.id}">
-              ⚡ Đính kèm
-            </button>
-            <button type="button" class="duongtho-ref-btn-del" data-img-id="${img.id}" style="background: none; border: none; color: #ef4444; font-size: 14px; cursor: pointer; padding: 2px 4px;" title="Xóa">✕</button>
-          </div>
-        </div>
-      `).join('');
+      // Update badge and label based on vault
+      const vault = getActorVault();
+      const chars = vault?.characters || [];
+      let activeActor = null;
+      if (vault && vault.activeCharacterId) {
+        activeActor = chars.find(c => c.id === vault.activeCharacterId) || null;
+      }
+      const labelText = activeActor ? activeActor.name.split(' ')[0] : 'ACTORS';
+      const currentBadge = document.getElementById('channa-actor-dock-btn-badge');
+      if (currentBadge && currentBadge.textContent === String(chars.length) && actorDockBtn.getAttribute('data-active-label') === labelText) {
+        return;
+      }
+      actorDockBtn.setAttribute('data-active-label', labelText);
+      actorDockBtn.innerHTML = `
+        <span style="font-size: 13px;">🎭</span>
+        <span style="font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">${safeEscapeHtml(labelText.toUpperCase())}</span>
+        <span id="channa-actor-dock-btn-badge" style="background: rgba(255,255,255,0.25); color: #fff; font-size: 9px; font-weight: 700; border-radius: 10px; padding: 1px 5px;">${chars.length}</span>
+      `;
     }
 
-    function openRefPopover(btn) {
-      const existing = document.getElementById('duongtho-ref-popover');
+    function handleActorButtonClick(btn) {
+      openActorQuickPopover(btn);
+    }
+
+    function openActorQuickPopover(btn) {
+      const existing = document.getElementById('channa-actor-quick-popover');
       if (existing) {
         existing.remove();
         return;
       }
 
+      const existingAcc = document.getElementById('channa-accounts-quick-popover');
+      if (existingAcc) existingAcc.remove();
+
+      const vault = getActorVault();
+      const chars = vault?.characters || [];
+      const activeChar = chars.find(c => c.id === vault?.activeCharacterId) || null;
+
       const popover = document.createElement('div');
-      popover.id = 'duongtho-ref-popover';
+      popover.id = 'channa-actor-quick-popover';
+      popover.className = 'channa-actor-popover';
+
+      let charsHtml = '';
+      if (chars.length === 0) {
+        charsHtml = `
+          <div style="padding: 16px 8px; text-align: center; color: #94a3b8; font-size: 12px;">
+            Chưa có nhân vật trong kho.<br>
+            <span style="color: #ec4899; font-weight: 700;">Mở Extension</span> để thêm nhân vật!
+          </div>
+        `;
+      } else {
+        charsHtml = chars.map(c => {
+          const isActive = vault?.activeCharacterId === c.id;
+          const avatar = c.avatarUrl ? `<img src="${c.avatarUrl}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 1.5px solid ${isActive ? '#ec4899' : '#475569'}; flex-shrink: 0;" />` : `<div style="width: 32px; height: 32px; border-radius: 50%; background: #2d1b4e; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">🎭</div>`;
+          return `
+            <div class="channa-actor-item ${isActive ? 'active' : ''}" data-char-id="${c.id}" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1;">
+                ${avatar}
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 12px; font-weight: 700; color: ${isActive ? '#ffffff' : '#e2e8f0'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeEscapeHtml(c.name)}</div>
+                  <div style="font-size: 10px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeEscapeHtml(c.dnaTokens || 'No DNA tags')}</div>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                <button type="button" class="channa-stage-actor-btn" data-char-id="${c.id}" style="background: linear-gradient(135deg, #ec4899, #db2777); color: #fff; border: none; border-radius: 6px; padding: 3px 8px; font-size: 10px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
+                  ⚡ Stage
+                </button>
+                ${isActive ? '<span style="font-size: 9px; font-weight: 800; background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981; padding: 2px 6px; border-radius: 999px;">LOCKED</span>' : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
 
       popover.innerHTML = `
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-          <div style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 800; color: #f472b6;">
-            <span>🖼️</span>
-            <span>Kho Ảnh Tham Chiếu (V3)</span>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; color: #f472b6;">
+            <span>🎭</span>
+            <span>Actor Vault Continuity</span>
+            <span style="font-size: 10px; color: #94a3b8; font-weight: 600;">(${chars.length})</span>
           </div>
-          <button id="duongtho-ref-close" style="background: none; border: none; color: #94a3b8; font-size: 15px; cursor: pointer; padding: 2px 5px;">✕</button>
+          <button id="channa-actor-popover-close" style="background: none; border: none; color: #94a3b8; font-size: 14px; cursor: pointer; padding: 2px 4px;">✕</button>
         </div>
-
-        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
-          <input type="file" id="duongtho-ref-native-picker" accept="image/*" multiple style="display: none;" />
-          <button type="button" id="duongtho-ref-add-btn" style="flex: 1; background: rgba(236, 72, 153, 0.18); border: 1px solid #ec4899; color: #f472b6; border-radius: 7px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
-            ➕ Thêm ảnh từ máy
-          </button>
-          <button type="button" id="duongtho-ref-clear-btn" style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.15); color: #94a3b8; border-radius: 7px; padding: 6px 10px; font-size: 11px; font-weight: 600; cursor: pointer;">
-            🗑️ Xóa hết
-          </button>
+        ${activeChar ? `
+          <div style="background: rgba(236, 72, 153, 0.12); border: 1px solid rgba(236, 72, 153, 0.35); border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 11px; color: #f472b6; font-weight: 700;">🟢 Active: ${safeEscapeHtml(activeChar.name)}</span>
+            <button id="channa-quick-stage-active" style="background: #ec4899; color: #fff; border: none; border-radius: 6px; padding: 3px 8px; font-size: 10px; font-weight: 700; cursor: pointer;">⚡ Re-Stage</button>
+          </div>
+        ` : ''}
+        <div style="max-height: 240px; overflow-y: auto; margin-bottom: 8px;">
+          ${charsHtml}
         </div>
-
-        <div id="duongtho-ref-status" style="display: none; padding: 5px 8px; border-radius: 6px; font-size: 10.5px; margin-bottom: 6px; text-align: center;"></div>
-
-        <div id="duongtho-ref-list-box" style="flex: 1; overflow-y: auto; max-height: 280px; padding-right: 2px;">
-          <div style="text-align: center; color: #94a3b8; padding: 16px; font-size: 11px;">Đang tải danh sách ảnh...</div>
-        </div>
-
-        <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 9.5px; color: #94a3b8; text-align: center;">
-          ⚡ Bấm <b>Đính kèm</b> để tự động đưa ảnh vào khung chat Dola
+        <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 10.5px;">
+          <span style="color: #94a3b8;">Bấm ⚡ Stage để đính kèm ảnh vào chat</span>
+          <span></span>
         </div>
       `;
 
       document.body.appendChild(popover);
       const rect = btn.getBoundingClientRect();
       popover.style.right = '60px';
-      popover.style.top = `${Math.max(60, Math.min(window.innerHeight - 380, rect.top - 80))}px`;
+      popover.style.left = 'auto';
+      popover.style.top = `${Math.max(60, Math.min(window.innerHeight - 380, rect.top - 70))}px`;
+      popover.style.bottom = 'auto';
 
-      const listBox = popover.querySelector('#duongtho-ref-list-box');
-      const statusBox = popover.querySelector('#duongtho-ref-status');
-      const nativePicker = popover.querySelector('#duongtho-ref-native-picker');
-
-      function setStatus(msg, isSuccess = true) {
-        if (!statusBox) return;
-        statusBox.style.display = 'block';
-        statusBox.style.background = isSuccess ? 'rgba(16, 185, 129, 0.18)' : 'rgba(239, 68, 68, 0.18)';
-        statusBox.style.color = isSuccess ? '#34d399' : '#f87171';
-        statusBox.style.border = `1px solid ${isSuccess ? '#10b981' : '#ef4444'}`;
-        statusBox.textContent = msg;
-        setTimeout(() => { if (statusBox) statusBox.style.display = 'none'; }, 3000);
-      }
-
-      async function refreshList() {
-        cachedImages = await dbGetAllImages();
-        renderRefList(listBox, cachedImages);
-        syncRefDockButton();
-      }
-      refreshList();
-
-      popover.querySelector('#duongtho-ref-close').onclick = (e) => {
+      popover.querySelector('#channa-actor-popover-close').onclick = (e) => {
         e.stopPropagation();
         popover.remove();
       };
 
-      // Register global callback for Android native image picker
-      window.__duongThoAddImagesFromNative = async function(imagesList) {
-        if (!Array.isArray(imagesList) || !imagesList.length) return;
-        setStatus(`Đang xử lý ${imagesList.length} ảnh từ máy...`, true);
-        for (const rec of imagesList) {
-          await dbSaveImage(rec);
-        }
-        await refreshList();
-        setStatus(`✅ Đã thêm ${imagesList.length} ảnh tham chiếu!`, true);
-      };
+      let lastActorStageClick = 0;
 
-      popover.querySelector('#duongtho-ref-add-btn').onclick = () => {
-        // Priority 1: Native Android Gallery/File Picker via bridge
-        if (window.AndroidDuongTho && typeof window.AndroidDuongTho.openNativeImagePicker === 'function') {
-          window.AndroidDuongTho.openNativeImagePicker();
-          return;
-        }
-        if (window.DuongThoAndroid && typeof window.DuongThoAndroid.openNativeImagePicker === 'function') {
-          window.DuongThoAndroid.openNativeImagePicker();
-          return;
-        }
-        // Priority 2: Standard HTML5 input picker
-        nativePicker.click();
-      };
+      const quickStageBtn = popover.querySelector('#channa-quick-stage-active');
+      if (quickStageBtn && activeChar) {
+        quickStageBtn.onclick = (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const now = Date.now();
+          if (now - lastActorStageClick < 1000) return;
+          lastActorStageClick = now;
+          window.postMessage({ type: 'STAGE_CHARACTER_ACTOR', actor: activeChar }, '*');
+          popover.remove();
+        };
+      }
 
-      nativePicker.onchange = async (e) => {
-        const files = Array.from(e.target.files || []);
-        if (!files.length) return;
-        setStatus(`Đang xử lý ${files.length} ảnh...`, true);
-
-        for (const file of files) {
-          const reader = new FileReader();
-          await new Promise(res => {
-            reader.onload = async () => {
-              const rec = {
-                id: `ref_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-                name: file.name,
-                type: file.type || 'image/png',
-                size: file.size,
-                dataUrl: reader.result,
-                addedAt: Date.now()
-              };
-              await dbSaveImage(rec);
-              res();
-            };
-            reader.readAsDataURL(file);
-          });
-        }
-        nativePicker.value = '';
-        await refreshList();
-        setStatus(`✅ Đã thêm ${files.length} ảnh tham chiếu!`, true);
-      };
-
-      popover.querySelector('#duongtho-ref-clear-btn').onclick = async () => {
-        if (!confirm('Bạn có chắc chắn muốn xóa toàn bộ ảnh trong kho tham chiếu?')) return;
-        await dbClearAllImages();
-        await refreshList();
-        setStatus('Đã xóa toàn bộ ảnh.', true);
-      };
-
-      listBox.onclick = async (e) => {
-        const attachBtn = e.target.closest('.duongtho-ref-btn-attach');
-        if (attachBtn) {
-          const imgId = attachBtn.getAttribute('data-img-id');
-          const targetImg = cachedImages.find(img => img.id === imgId);
-          if (!targetImg) return;
-
-          const oldText = attachBtn.innerHTML;
-          attachBtn.disabled = true;
-          attachBtn.innerHTML = '⏳ Đang gắn...';
-
-          try {
-            await duongThoAttachReferenceImage(targetImg.dataUrl, targetImg.name);
-            attachBtn.innerHTML = '✅ Đã gắn!';
-            setStatus(`✅ Đã đính kèm ${targetImg.name} vào chat!`, true);
-            setTimeout(() => {
-              attachBtn.disabled = false;
-              attachBtn.innerHTML = oldText;
-            }, 2000);
-          } catch (err) {
-            console.error('[DuongTho Attach Error]', err);
-            attachBtn.disabled = false;
-            attachBtn.innerHTML = '❌ Lỗi';
-            setStatus(`Lỗi: ${err.message}`, false);
-            setTimeout(() => { attachBtn.innerHTML = oldText; }, 2500);
+      popover.querySelectorAll('.channa-actor-item').forEach(el => {
+        el.onclick = (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const now = Date.now();
+          if (now - lastActorStageClick < 1000) return;
+          lastActorStageClick = now;
+          const charId = el.getAttribute('data-char-id');
+          if (charId && vault) {
+            vault.activeCharacterId = charId;
+            window.__CHANNA_ACTOR_VAULT__ = vault;
+            window.postMessage({ type: 'CTB_SET_ACTIVE_ACTOR', characterId: charId }, '*');
+            const targetChar = (vault.characters || []).find(c => c.id === charId);
+            if (targetChar) {
+              window.postMessage({ type: 'STAGE_CHARACTER_ACTOR', actor: targetChar }, '*');
+            }
+            syncActorComposerButton();
           }
-          return;
-        }
+          popover.remove();
+        };
+      });
 
-        const delBtn = e.target.closest('.duongtho-ref-btn-del');
-        if (delBtn) {
-          const imgId = delBtn.getAttribute('data-img-id');
-          await dbDeleteImage(imgId);
-          await refreshList();
-          setStatus('Đã xóa ảnh.', true);
+      const onOutsideClick = (e) => {
+        if (!popover.contains(e.target) && e.target !== btn) {
+          popover.remove();
+          document.removeEventListener('click', onOutsideClick);
         }
       };
+      setTimeout(() => document.addEventListener('click', onOutsideClick), 50);
+    }
+
+    setInterval(syncActorComposerButton, 3500);
+  })();
+
+  // =========================================================================
+  // 👥 CHANNA ACCOUNTS DOCK & INSTANT MULTI-PROFILE SWITCHER
+  // Positioned directly ABOVE Prompts Dock at top: calc(50% - 44px)
+  // =========================================================================
+  (() => {
+    'use strict';
+
+    function injectAccountsStyles() {
+      if (document.getElementById('ctb-accounts-dock-style')) return;
+      const style = document.createElement('style');
+      style.id = 'ctb-accounts-dock-style';
+      style.textContent = `
+        #channa-accounts-dock-btn {
+          position: fixed !important;
+          top: calc(50% - 44px) !important;
+          right: 0px !important;
+          left: auto !important;
+          bottom: auto !important;
+          transform: translateY(-50%) !important;
+          border-radius: 14px 0 0 14px !important;
+          z-index: 999999 !important;
+          background: linear-gradient(135deg, #059669 0%, #0284c7 100%) !important;
+          border: 1px solid rgba(52, 211, 153, 0.6) !important;
+          border-right: none !important;
+          color: #ffffff !important;
+          padding: 8px 12px !important;
+          cursor: pointer !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 6px !important;
+          box-shadow: -4px 0 20px rgba(0, 0, 0, 0.65), -2px 0 10px rgba(5, 150, 105, 0.5) !important;
+          transition: transform 0.2s ease, right 0.2s ease, box-shadow 0.2s ease !important;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+          user-select: none !important;
+        }
+        #channa-accounts-dock-btn:hover {
+          transform: translateY(-50%) scale(1.04) !important;
+          box-shadow: -6px 0 28px rgba(5, 150, 105, 0.75) !important;
+        }
+        .channa-accounts-popover {
+          position: fixed !important;
+          background: rgba(15, 12, 27, 0.96) !important;
+          border: 1px solid rgba(52, 211, 153, 0.45) !important;
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 20px rgba(16, 185, 129, 0.25) !important;
+          border-radius: 14px !important;
+          padding: 12px !important;
+          min-width: 280px !important;
+          max-width: 340px !important;
+          z-index: 2147483647 !important;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+          backdrop-filter: blur(16px) !important;
+          color: #f1f5f9 !important;
+          box-sizing: border-box !important;
+        }
+        .channa-acc-item {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: space-between !important;
+          gap: 8px !important;
+          padding: 7px 10px !important;
+          border-radius: 9px !important;
+          cursor: pointer !important;
+          transition: all 0.15s ease !important;
+          border: 1px solid rgba(255, 255, 255, 0.08) !important;
+          background: rgba(255, 255, 255, 0.03) !important;
+          margin-bottom: 5px !important;
+          box-sizing: border-box !important;
+        }
+        .channa-acc-item:hover {
+          background: rgba(16, 185, 129, 0.12) !important;
+          border-color: rgba(52, 211, 153, 0.35) !important;
+        }
+        .channa-acc-item.active {
+          background: rgba(16, 185, 129, 0.18) !important;
+          border-color: #10b981 !important;
+          box-shadow: 0 0 12px rgba(16, 185, 129, 0.2) !important;
+        }
+        .channa-acc-num-badge {
+          background: rgba(255, 255, 255, 0.08);
+          color: #94a3b8;
+          font-size: 8.5px;
+          font-weight: 800;
+          border-radius: 4px;
+          padding: 2px 4px;
+          letter-spacing: 0.5px;
+          flex-shrink: 0;
+        }
+        .channa-acc-item.active .channa-acc-num-badge {
+          background: rgba(16, 185, 129, 0.25);
+          color: #34d399;
+        }
+        .channa-acc-search-box {
+          width: 100% !important;
+          box-sizing: border-box !important;
+          background: rgba(255, 255, 255, 0.06) !important;
+          border: 1px solid rgba(255, 255, 255, 0.12) !important;
+          border-radius: 8px !important;
+          color: #fff !important;
+          font-size: 11px !important;
+          padding: 6px 10px !important;
+          margin-bottom: 8px !important;
+          outline: none !important;
+          transition: border-color 0.2s, box-shadow 0.2s !important;
+        }
+        .channa-acc-search-box:focus {
+          border-color: #10b981 !important;
+          box-shadow: 0 0 10px rgba(16, 185, 129, 0.3) !important;
+        }
+        .channa-acc-list-scroll {
+          max-height: 270px !important;
+          overflow-y: auto !important;
+          padding-right: 2px !important;
+        }
+        .channa-acc-list-scroll::-webkit-scrollbar {
+          width: 4px !important;
+        }
+        .channa-acc-list-scroll::-webkit-scrollbar-track {
+          background: rgba(0, 0, 0, 0.2) !important;
+        }
+        .channa-acc-list-scroll::-webkit-scrollbar-thumb {
+          background: #059669 !important;
+          border-radius: 4px !important;
+        }
+      `;
+      (document.head || document.documentElement).appendChild(style);
+    }
+
+    let injectedAccountsList = {};
+    let injectedActiveAccountName = '';
+
+    window.addEventListener('message', (e) => {
+      if (e.data?.type === 'CTB_SYNC_ACCOUNTS_PAYLOAD') {
+        injectedAccountsList = e.data.profiles || {};
+        if (e.data.activeProfile) {
+          injectedActiveAccountName = e.data.activeProfile;
+        }
+        syncAccountsDockButton();
+      }
+      if (e.data?.type === 'SET_ACTIVE_ACCOUNT_NAME' && e.data.activeAccountName) {
+        injectedActiveAccountName = e.data.activeAccountName;
+        syncAccountsDockButton();
+      }
+    });
+
+    // Request initial accounts sync
+    window.postMessage({ type: 'CTB_REQUEST_ACCOUNTS_SYNC' }, '*');
+
+    function safeEscape(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[m]);
+    }
+
+    function getResolvedActiveAccount() {
+      if (injectedActiveAccountName && injectedActiveAccountName !== 'Default') {
+        return injectedActiveAccountName.trim();
+      }
+      const accNameSpan = document.getElementById('ctb-acc-name');
+      if (accNameSpan && accNameSpan.textContent && accNameSpan.textContent !== 'Connecting...') {
+        return accNameSpan.textContent.trim();
+      }
+      return injectedActiveAccountName || '';
+    }
+
+    function isAccountActive(name, activeName) {
+      if (!name || !activeName) return false;
+      const n = name.trim().toLowerCase();
+      const a = activeName.trim().toLowerCase();
+      return n === a || n.includes(a) || a.includes(n);
+    }
+
+    function syncAccountsDockButton() {
+      const existing = document.getElementById("channa-accounts-dock-btn");
+      if (existing) existing.remove();
+      return;
+      injectAccountsStyles();
+
+      let accountsDockBtn = document.getElementById('channa-accounts-dock-btn');
+      if (!accountsDockBtn || !accountsDockBtn.isConnected) {
+        if (accountsDockBtn) accountsDockBtn.remove();
+        accountsDockBtn = document.createElement('button');
+        accountsDockBtn.id = 'channa-accounts-dock-btn';
+        accountsDockBtn.type = 'button';
+        accountsDockBtn.title = '👥 Quản lý tài khoản';
+
+        accountsDockBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openAccountsQuickPopover(accountsDockBtn);
+        };
+
+        accountsDockBtn.innerHTML = `
+          <span style="font-size: 13px;">👥</span>
+          <span style="font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">ACCOUNTS</span>
+          <span id="channa-accounts-dock-btn-badge" style="background: rgba(255,255,255,0.25); color: #fff; font-size: 9px; font-weight: 700; border-radius: 10px; padding: 1px 5px;">0</span>
+        `;
+
+        (document.body || document.documentElement).appendChild(accountsDockBtn);
+      }
+
+      const profiles = injectedAccountsList || {};
+      const totalAccs = Object.keys(profiles).length;
+
+      const badge = document.getElementById('channa-accounts-dock-btn-badge');
+      if (badge && badge.textContent !== String(totalAccs)) {
+        badge.textContent = String(totalAccs);
+      }
+    }
+
+    function openAccountsQuickPopover(btn) {
+      const existing = document.getElementById('channa-accounts-quick-popover');
+      if (existing) {
+        existing.remove();
+        return;
+      }
+
+      const existingActor = document.getElementById('channa-actor-quick-popover');
+      if (existingActor) existingActor.remove();
+
+      const popover = document.createElement('div');
+      popover.id = 'channa-accounts-quick-popover';
+      popover.className = 'channa-accounts-popover';
+
+      const rect = btn.getBoundingClientRect();
+      popover.style.right = '60px';
+      const idealTop = rect.top - 80;
+      const clampedTop = Math.max(60, Math.min(window.innerHeight - 380, idealTop));
+      popover.style.top = `${clampedTop}px`;
+
+      const profiles = injectedAccountsList || {};
+      const profileKeys = Object.keys(profiles);
+      const activeName = getResolvedActiveAccount();
+
+      let headerHtml = `
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 7px;">
+          <div style="display: flex; align-items: center; gap: 7px;">
+            <span style="font-size: 16px;">👥</span>
+            <div>
+              <div style="font-weight: 800; font-size: 12px; color: #f8fafc; letter-spacing: 0.4px;">QUẢN LÝ TÀI KHOẢN</div>
+              <div style="font-size: 9.5px; color: #34d399; font-weight: 600;">⚡ Chuyển đổi nhanh (${profileKeys.length} Tài khoản)</div>
+            </div>
+          </div>
+          <button id="channa-accounts-popover-close" style="background: none; border: none; color: #94a3b8; font-size: 15px; cursor: pointer; padding: 2px 6px; border-radius: 4px;">✕</button>
+        </div>
+      `;
+
+      let searchHtml = '';
+      if (profileKeys.length > 3) {
+        searchHtml = `
+          <input type="text" id="channa-accounts-search-input" class="channa-acc-search-box" placeholder="🔍 Tìm tài khoản...">
+        `;
+      }
+
+      let listHtml = '';
+      if (profileKeys.length === 0) {
+        listHtml = `
+          <div style="padding: 16px 8px; text-align: center; color: #94a3b8; font-size: 12px;">
+            Chưa có tài khoản nào được lưu.<br>
+            <span style="color: #34d399; font-weight: 700;">Mở Extension</span> để thêm tài khoản!
+          </div>
+        `;
+      } else {
+        const itemsHtml = profileKeys.map((name, idx) => {
+          const prof = profiles[name] || {};
+          const numStr = `#${String(idx + 1).padStart(2, '0')}`;
+          const isActive = isAccountActive(name, activeName);
+          const countLabel = prof.count ? `${prof.count} Cookies` : 'Saved Account';
+          const dateLabel = prof.date ? ` • ${prof.date}` : '';
+
+          return `
+            <div class="channa-acc-item ${isActive ? 'active' : ''}" data-profile-name="${safeEscape(name)}">
+              <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+                <span class="channa-acc-num-badge">${numStr}</span>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 5px;">
+                    <span style="font-size: 11.5px; font-weight: 700; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;" title="${safeEscape(name)}">${safeEscape(name)}</span>
+                    ${isActive ? '<span style="background: rgba(16, 185, 129, 0.25); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.5); font-size: 8px; font-weight: 800; padding: 1px 4px; border-radius: 4px;">🟢 ACTIVE</span>' : ''}
+                  </div>
+                  <div style="font-size: 8.5px; color: #94a3b8; margin-top: 1px;">${safeEscape(countLabel)}${safeEscape(dateLabel)}</div>
+                </div>
+              </div>
+              <div style="flex-shrink: 0; margin-left: 6px;">
+                ${isActive 
+                  ? '<span style="font-size: 9.5px; font-weight: 700; color: #34d399; padding: 3px 8px; border-radius: 6px; background: rgba(52,211,153,0.15); border: 1px solid rgba(52,211,153,0.3); display: inline-block;">Current</span>'
+                  : `<button class="ctb-acc-switch-action-btn" data-profile="${safeEscape(name)}" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%); border: 1px solid #34d399; color: #fff; font-size: 9.5px; font-weight: 700; padding: 3px 9px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 3px; box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);">⚡ Switch</button>`
+                }
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        listHtml = `<div class="channa-acc-list-scroll" id="channa-accounts-list-wrap">${itemsHtml}</div>`;
+      }
+
+      const footerHtml = `
+        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; font-size: 9px; color: #94a3b8;">
+          <span>💡 Click any account to switch instantly</span>
+          <span style="color: #34d399; font-weight: 700;">Safe Hot-Swap</span>
+        </div>
+      `;
+
+      popover.innerHTML = headerHtml + searchHtml + listHtml + footerHtml;
+      (document.body || document.documentElement).appendChild(popover);
+
+      const closeBtn = popover.querySelector('#channa-accounts-popover-close');
+      if (closeBtn) closeBtn.onclick = () => popover.remove();
+
+      const searchInput = popover.querySelector('#channa-accounts-search-input');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          const q = (e.target.value || '').toLowerCase().trim();
+          const items = popover.querySelectorAll('.channa-acc-item');
+          items.forEach(it => {
+            const pName = (it.getAttribute('data-profile-name') || '').toLowerCase();
+            it.style.display = (!q || pName.includes(q)) ? 'flex' : 'none';
+          });
+        });
+      }
+
+      const triggerSwitch = (profileName, clickedEl) => {
+        if (!profileName) return;
+        const allBtns = popover.querySelectorAll('.ctb-acc-switch-action-btn');
+        allBtns.forEach(b => {
+          b.disabled = true;
+          b.style.opacity = '0.6';
+        });
+        const btnTarget = clickedEl?.closest('.channa-acc-item')?.querySelector('.ctb-acc-switch-action-btn') || clickedEl;
+        if (btnTarget && btnTarget.tagName === 'BUTTON') {
+          btnTarget.innerHTML = '⏳ Switching...';
+        }
+
+        if (typeof window.__showChannaNotice === 'function') {
+          window.__showChannaNotice(`⚡ Switching to account "${profileName}"...`, 4000);
+        }
+
+        try {
+          sessionStorage.setItem('__ctb_switch_cooldown', String(Date.now() + 90000));
+          sessionStorage.setItem('__ctb_last_limit_switch', String(Date.now()));
+          sessionStorage.removeItem('__ctb_reload_guard');
+          sessionStorage.removeItem('__ctb_err_rec_count');
+          window.name = (window.name || '').replace(/__ctb_guard:\[[^\]]*\]/g, '').trim();
+        } catch (e) {}
+
+        window.postMessage({
+          type: 'CTB_SWITCH_ACCOUNT_PROFILE',
+          profileName: profileName
+        }, '*');
+
+        setTimeout(() => {
+          popover.remove();
+        }, 500);
+      };
+
+      const rows = popover.querySelectorAll('.channa-acc-item');
+      rows.forEach(row => {
+        row.onclick = (e) => {
+          const pName = row.getAttribute('data-profile-name');
+          if (row.classList.contains('active')) return;
+          triggerSwitch(pName, e.target);
+        };
+      });
 
       const onOutsideClick = (e) => {
         if (!popover.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
@@ -3534,61 +4455,8 @@ if (typeof window !== 'undefined') {
       setTimeout(() => document.addEventListener('click', onOutsideClick), 50);
     }
 
-    async function syncRefDockButton() {
-      injectRefStyles();
-
-      let btn = document.getElementById('duongtho-ref-dock-btn');
-      if (!btn || !btn.isConnected) {
-        if (btn) btn.remove();
-        btn = document.createElement('button');
-        btn.id = 'duongtho-ref-dock-btn';
-        btn.type = 'button';
-        btn.title = '🖼️ Quản lý ảnh tham chiếu (Seedance V3)';
-        btn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          openRefPopover(btn);
-        };
-        (document.body || document.documentElement).appendChild(btn);
-      }
-
-      if (!cachedImages.length) {
-        cachedImages = await dbGetAllImages();
-      }
-
-      btn.innerHTML = `
-        <span style="font-size: 13px;">🖼️</span>
-        <span style="font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">ẢNH MẪU</span>
-        <span id="duongtho-ref-badge" style="background: rgba(255,255,255,0.25); color: #fff; font-size: 9px; font-weight: 700; border-radius: 10px; padding: 1px 5px;">${cachedImages.length}</span>
-      `;
-    }
-
-    // Handle postMessage triggers
-    window.addEventListener('message', async (e) => {
-      if (e.data?.type === 'STAGE_CHARACTER_ACTOR' && e.data.actor) {
-        const actor = e.data.actor;
-        const imgUrl = actor.avatarUrl || actor.imageUrl || actor.image;
-        if (imgUrl) {
-          try {
-            await duongThoAttachReferenceImage(imgUrl, `${actor.name || 'actor'}.png`);
-          } catch (err) {
-            console.warn('[DuongTho Actor Attach Error]:', err);
-          }
-        }
-      }
-      if (e.data?.type === 'DUONGTHO_ATTACH_REFERENCE' && e.data.image) {
-        try {
-          await duongThoAttachReferenceImage(e.data.image, e.data.name || 'reference.png');
-        } catch (err) {
-          console.warn('[DuongTho Ref Attach Error]:', err);
-        }
-      }
-    });
-
-    setInterval(syncRefDockButton, 3500);
-    syncRefDockButton();
+    setInterval(syncAccountsDockButton, 3500);
   })();
-
 
   // =========================================================================
   // 🎬 UNIVERSAL MULTI-ASPECT RATIO & CODEC VIDEO REFERENCE ENGINE
@@ -5186,7 +6054,7 @@ if (typeof window !== 'undefined') {
       for (let i = 0; i < candidates.length; i++) {
         const el = candidates[i];
         if (el.id === 'channa-actor-ref-btn' || el.id === 'channa-video-ref-btn') continue;
-        if (el.closest && el.closest('#duongtho-ref-dock-btn, #duongtho-ref-popover, #channa-accounts-dock-btn, #channa-actor-dock-btn, #channa-prompt-dock, #channa-top-center-capsule, [class*="sidebar"], nav, header')) continue;
+        if (el.closest && el.closest('#channa-accounts-dock-btn, #channa-actor-dock-btn, #channa-prompt-dock, #channa-top-center-capsule, [class*="sidebar"], nav, header')) continue;
 
         const txt = (el.textContent || '').trim();
         const key = el.getAttribute('data-input-engine-actionbar-control-key') || '';
@@ -5319,588 +6187,435 @@ if (typeof window !== 'undefined') {
     window.addEventListener('load', mountVideoRefButton, { passive: true });
   })();
 
-  
+  // ============================================================================
+  // 📥 DUONG THO 1080P UNWATERMARKED CARD MATCHING & DIRECT MP4 DOWNLOAD ENGINE
+  // ============================================================================
+  (() => {
+    const capturedMediaMap = new Map();
+
+    function registerCapturedMedia(media) {
+      if (media && media.url) {
+        const key = media.vid || media.fingerprint || media.url;
+        capturedMediaMap.set(key, media);
+        try {
+          attachIndividualVideoDownloadButtons();
+        } catch(e) {}
+      }
+    }
+
+    function syncCapturedMediaFromVault() {
+      try {
+        const bridge = document.getElementById('__ctb_vault__');
+        if (bridge) {
+          const raw = bridge.getAttribute('data-videos') || bridge.textContent;
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              parsed.forEach(v => registerCapturedMedia(v));
+            }
+          }
+        }
+        const storedRaw = sessionStorage.getItem('__CTB_MASTER_VIDEOS__');
+        if (storedRaw) {
+          const parsed = JSON.parse(storedRaw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach(v => registerCapturedMedia(v));
+          }
+        }
+      } catch(e) {}
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('message', (event) => {
+        if (!event.data) return;
+        if (event.data.type === 'ZAKARIYA_NEW_UNWATERMARKED_MEDIA' || event.data.type === 'DOLA_VIDEO_EXTRACTED') {
+          const media = event.data.media || event.data.detail;
+          if (media && media.url) {
+            registerCapturedMedia(media);
+          }
+        }
+      });
+      window.addEventListener('DOLA_VIDEO_EXTRACTED', (event) => {
+        if (event.detail && event.detail.url) {
+          registerCapturedMedia(event.detail);
+        }
+      });
+    }
+
+    function extractTOSKey(url) {
+      if (!url || typeof url !== 'string') return '';
+      try {
+        const u = new URL(url, window.location.href);
+        const path = u.pathname;
+        const tosMatch = path.match(/tos-[a-zA-Z0-9_-]+\/([a-zA-Z0-9_-]+)/i);
+        if (tosMatch && tosMatch[1]) {
+          return tosMatch[1].split('~')[0].split('.')[0];
+        }
+        const parts = path.split('/').filter(Boolean);
+        const last = parts[parts.length - 1] || '';
+        return last.split('~')[0].split('.')[0];
+      } catch {
+        const clean = String(url).split('?')[0];
+        const match = clean.match(/tos-[a-zA-Z0-9_-]+\/([a-zA-Z0-9_-]+)/i);
+        return match ? match[1].split('~')[0].split('.')[0] : '';
+      }
+    }
+
+    function extractDomPrompt(card, cardIndex = 0) {
+      try {
+        const tableRows = document.querySelectorAll('table tbody tr');
+        if (tableRows.length > cardIndex) {
+          const row = tableRows[cardIndex];
+          const titleEl = row.querySelector('td:nth-child(2)');
+          if (titleEl) {
+            const titleText = (titleEl.innerText || titleEl.textContent || '').trim();
+            if (titleText) return `Scene_${cardIndex + 1}_${titleText}`;
+          }
+        }
+        const container = card.closest('[data-container-type], [data-message-id], [class*="message"]') || card.parentElement;
+        if (container) {
+          const headings = container.querySelectorAll('h1, h2, h3, h4, strong');
+          for (const h of headings) {
+            const txt = (h.innerText || h.textContent || '').trim();
+            if (txt.length >= 4 && txt.length <= 80 && !txt.includes('1080P') && !txt.includes('DuongTho')) {
+              return txt;
+            }
+          }
+        }
+      } catch (e) {}
+      return `DuongTho_Scene_${cardIndex + 1}`;
+    }
+
+    function getVideoCards() {
+      const rawCards = document.querySelectorAll('[class*="block-video"], [class*="block_video"], .image-box-grid-item-FTeESI, [class*="image-box-grid-item"]');
+      const cards = [];
+
+      rawCards.forEach((el) => {
+        const block = el.querySelector('[class*="block-video"]') || el;
+        if (!cards.includes(block)) {
+          cards.push(block);
+        }
+      });
+
+      const standalonePlayers = document.querySelectorAll('.video-player-wrapper, [class*="video-player-wrapper"], video');
+      standalonePlayers.forEach((el) => {
+        const card = el.closest('[class*="block-video"], [class*="block_video"], [class*="image-box-grid-item"]') || el.parentElement || el;
+        if (!cards.includes(card) && !card.closest('#channa-prompt-dock, .channa-prompt-dock, #channa-accounts-dock-btn, #channa-accounts-quick-popover')) {
+          cards.push(card);
+        }
+      });
+
+      return cards;
+    }
+
+    function findMatchingMediaForCard(card, allCards) {
+      syncCapturedMediaFromVault();
+      const allMedia = Array.from(capturedMediaMap.values());
+      if (allMedia.length === 0) return null;
+
+      const cardIndex = allCards.indexOf(card);
+      const imgEls = card.querySelectorAll('img');
+      const videoEl = card.querySelector('video');
+
+      const domImgSrcs = Array.from(imgEls).map(img => img.src || img.getAttribute('src') || '').filter(Boolean);
+      const domVideoSrc = videoEl ? (videoEl.currentSrc || videoEl.src || videoEl.getAttribute('src') || '') : '';
+
+      const cardKeys = [];
+      domImgSrcs.forEach(src => {
+        const k = extractTOSKey(src);
+        if (k && k.length > 5) cardKeys.push(k);
+      });
+      if (domVideoSrc) {
+        const vk = extractTOSKey(domVideoSrc);
+        if (vk && vk.length > 5) cardKeys.push(vk);
+      }
+
+      for (const key of cardKeys) {
+        for (const media of allMedia) {
+          const mediaPosterKey = extractTOSKey(media.poster);
+          const mediaVidKey = extractTOSKey(media.vid);
+          const mediaUrlKey = extractTOSKey(media.url);
+          if ((mediaPosterKey && mediaPosterKey === key) ||
+              (mediaVidKey && mediaVidKey === key) ||
+              (mediaUrlKey && mediaUrlKey === key)) {
+            return media;
+          }
+        }
+      }
+
+      for (const key of cardKeys) {
+        for (const media of allMedia) {
+          if ((media.poster && media.poster.includes(key)) ||
+              (media.url && media.url.includes(key)) ||
+              (media.vid && String(media.vid).includes(key))) {
+            return media;
+          }
+        }
+      }
+
+      if (cardIndex >= 0 && cardIndex < allMedia.length) {
+        return allMedia[cardIndex];
+      }
+
+      return allMedia[cardIndex % allMedia.length] || allMedia[0];
+    }
+
+    function sanitizeFilename(text) {
+      return String(text || 'video')
+        .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+        .replace(/\s+/g, '_')
+        .replace(/_+/g, '_')
+        .slice(0, 45)
+        .trim();
+    }
+
+    async function downloadVideoUniversal(videoUrl, filename = 'DuongTho_1080P.mp4') {
+      if (!videoUrl) return false;
+      let cleanUrl = String(videoUrl).trim();
+      if (!filename.toLowerCase().endsWith('.mp4')) {
+        filename = filename.replace(/\.[a-z0-9]+$/i, '') + '.mp4';
+      }
+
+      try {
+        if (typeof window.AndroidDuongTho !== 'undefined' && typeof window.AndroidDuongTho.downloadVideo === 'function') {
+          window.AndroidDuongTho.downloadVideo(cleanUrl, filename);
+          if (typeof window.__showChannaNotice === 'function') window.__showChannaNotice('⬇️ Đã gửi lệnh tải video vào Thư viện Android!');
+          return true;
+        }
+        if (typeof window.DuongThoAndroid !== 'undefined' && typeof window.DuongThoAndroid.downloadVideo === 'function') {
+          window.DuongThoAndroid.downloadVideo(cleanUrl, filename);
+          if (typeof window.__showChannaNotice === 'function') window.__showChannaNotice('⬇️ Đã gửi lệnh tải video vào Thư viện Android!');
+          return true;
+        }
+      } catch (e) {}
+
+      try {
+        const res = await fetch(cleanUrl);
+        if (res.ok) {
+          const blob = await res.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = filename;
+          a.style.display = 'none';
+          (document.body || document.documentElement).appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+          return true;
+        }
+      } catch (err) {}
+
+      try {
+        const a = document.createElement('a');
+        a.href = cleanUrl;
+        a.download = filename;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.style.display = 'none';
+        (document.body || document.documentElement).appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return true;
+      } catch (e) {}
+      return false;
+    }
+    window.downloadVideoUniversal = downloadVideoUniversal;
+
+    function attachIndividualVideoDownloadButtons() {
+      try {
+        const cards = getVideoCards();
+        cards.forEach((card, index) => {
+          if (card.querySelector('.duongtho-single-dl-btn')) return;
+
+          const videoEl = card.querySelector('video');
+
+          const btn = document.createElement('button');
+          btn.className = 'duongtho-single-dl-btn';
+          btn.innerHTML = `<span style="font-size:12px;">⬇</span> <span>Tải 1080P Gốc (.mp4)</span>`;
+          btn.style.cssText = 'position:relative;z-index:99999;margin-top:6px;display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;border:none;border-radius:10px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(16,185,129,0.35);transition:all 0.2s ease;';
+
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            btn.style.opacity = '0.7';
+            btn.innerHTML = `<span>⏳</span> <span>Đang tải...</span>`;
+            
+            const allCurrentCards = getVideoCards();
+            const currentCardIndex = allCurrentCards.indexOf(card);
+            const matchedMedia = findMatchingMediaForCard(card, allCurrentCards);
+            const domPrompt = extractDomPrompt(card, currentCardIndex >= 0 ? currentCardIndex : index);
+            const promptSlug = sanitizeFilename(domPrompt);
+            const filename = `DuongTho_1080P_${promptSlug}_${Date.now()}.mp4`;
+
+            const targetUrl = (matchedMedia && matchedMedia.url)
+              ? matchedMedia.url
+              : (videoEl ? (videoEl.currentSrc || videoEl.src || videoEl.getAttribute('src') || '') : '');
+
+            if (targetUrl) {
+              await downloadVideoUniversal(targetUrl, filename);
+              btn.innerHTML = `<span>✅</span> <span>Đã tải!</span>`;
+              btn.style.background = 'linear-gradient(135deg, #3b82f6, #1d4ed8)';
+              setTimeout(() => {
+                btn.style.opacity = '1';
+                btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+                btn.innerHTML = `<span style="font-size:12px;">⬇</span> <span>Tải 1080P Gốc (.mp4)</span>`;
+              }, 3000);
+            } else {
+              btn.innerHTML = `<span>⚠️</span> <span>Đang quét 1080P...</span>`;
+              setTimeout(() => {
+                btn.style.opacity = '1';
+                btn.innerHTML = `<span style="font-size:12px;">⬇</span> <span>Tải 1080P Gốc (.mp4)</span>`;
+              }, 2000);
+            }
+          });
+
+          card.style.position = 'relative';
+          const insertTarget = videoEl || card.firstElementChild || card;
+          if (insertTarget.nextSibling) {
+            insertTarget.parentNode.insertBefore(btn, insertTarget.nextSibling);
+          } else {
+            card.appendChild(btn);
+          }
+        });
+      } catch (e) {}
+    }
+    window.attachIndividualVideoDownloadButtons = attachIndividualVideoDownloadButtons;
+
+    setInterval(attachIndividualVideoDownloadButtons, 2000);
+    document.addEventListener('DOMContentLoaded', attachIndividualVideoDownloadButtons, { passive: true });
+    window.addEventListener('load', attachIndividualVideoDownloadButtons, { passive: true });
+  })();
+
+
+
+
+
+
+
+!function(){"use strict";function e(){return null}if(window.duongThoExtractorActive)return;window.duongThoExtractorActive=!0,console.log("[Đường Thọ Dola] Master Extractor booting (full-parity mode)...");let t=new Set,r=new Set,n=new Set,i=new Set,a=new Set,l=[];window.zdolaVideoMap=window.zdolaVideoMap||{},window.zdolaLastActiveVid=null,window.duongThoVideos=l,window.duongThoChatUrl=location.href;let o=location.href,s=!1;function c(){window.duongThoVideos=l,window.duongThoChatUrl=o;try{localStorage.setItem("duongtho_extracted_videos",JSON.stringify(l))}catch(e){}}function u(e,t,i,a,o){if(!e||s)return!1;let u=(o||[]).filter(Boolean);if(u.some(e=>n.has(e)))return!1;u.forEach(e=>n.add(e));let f=function e(t){try{let r=new URL(t,location.origin);for(let n of["video_id","file_id","item_id","vid"]){let i=r.searchParams.get(n);if(i&&i.length>=10)return(n+":"+i).toLowerCase()}let a=r.pathname,l=a.match(/[a-f0-9]{24,}/gi);if(l&&l.length)return l[l.length-1].toLowerCase();let o=(a.match(/[a-zA-Z0-9_-]{16,}/g)||[]).filter(e=>!/^tos-/i.test(e));if(o.length)return o[o.length-1].toLowerCase();return""}catch(s){return""}}(e),d=e.split("?")[0];if(a&&n.has(a)||f&&r.has(f)||!a&&!f&&r.has(d))return!1;a&&n.add(a),f&&r.add(f),a||f||r.add(d);let h=t.endsWith(".mp4")?t:t+".mp4";return l.push({id:a||f,vid:a||"",sig:f,url:e,filename:h,coverUrl:i||""}),c(),console.log(`[Đường Thọ Dola] + ${h}  (total ${l.length})`),!0}function f(e){l=[],t=new Set,r=new Set,n=new Set,i=new Set,a=new Set,window.zdolaVideoMap={};try{localStorage.removeItem("duongtho_extracted_videos")}catch(o){}c(),console.log("[Đường Thọ Dola] cleared ("+e+")")}function d(e){let t=(4-e.length%4)%4;return e+"=".repeat(t)}function h(e){let t=String(e||"").trim(),r=[t,t.replace(/[$@#]/g,e=>({$:"_","@":"/","#":"."})[e]),t.replace(/[$@#]/g,e=>({$:"+","@":"/","#":"="})[e])];for(let n of r)try{let i=d(n).replace(/-/g,"+").replace(/_/g,"/"),a=atob(i),l=new Uint8Array(a.length);for(let o=0;o<a.length;o++)l[o]=a.charCodeAt(o);return l}catch(s){}return null}function p(e){if(!e||!e.length)return"";for(let t of e)if(9!==t&&10!==t&&13!==t&&(t<32||t>126))return"";return new TextDecoder().decode(e)}async function g(e,t,r){if(!e.length||e.length%16!=0)return"";try{let n=await crypto.subtle.importKey("raw",t,"AES-CBC",!1,["decrypt"]),i=new Uint8Array(await crypto.subtle.decrypt({name:"AES-CBC",iv:r},n,e)),a=p(i);if(/^https?:\/\//i.test(a))return a;let l=function e(t){if(!t||!t.length)return new Uint8Array;let r=t[t.length-1];if(r<1||r>16||r>t.length)return t;for(let n=t.length-r;n<t.length;n++)if(t[n]!==r)return t;return t.slice(0,t.length-r)}(i),o=p(l);return/^https?:\/\//i.test(o)?o:""}catch{return""}}async function $(e,t){let r=h(e),n=h(t);if(!r||!n)return"";let i=await crypto.subtle.digest("SHA-512",n.slice(0,32)),a=function e(t){let r=new Uint8Array(t.length/2);for(let n=0;n<r.length;n++)r[n]=parseInt(t.slice(2*n,2*n+2),16);return r}("4dd4c2e6b83162090e52b3c7a6733ba41cb2462b829ab58a196b39db57177524f49baf7f08e8d68d26a72e37c1a95a2f1f05a51892aef2949732b62a38aadd58"),l=function e(t,r){let n=new Uint8Array(t.length+r.length);return n.set(t,0),n.set(r,t.length),n}(new Uint8Array(i),a),o=new Uint8Array(await crypto.subtle.digest("SHA-512",l)),s=o.slice(0,16),c=o.slice(16,32),u=[];for(let f of(r.length>=4&&168===r[0]&&0===r[1]&&1===r[2]&&0===r[3]?(u.push({payload:r.slice(4),key:s,iv:c}),u.push({payload:r.slice(4),key:c,iv:s}),r.length>36&&(u.push({payload:r.slice(36),key:s,iv:r.slice(20,36)}),u.push({payload:r.slice(36),key:s,iv:c}))):u.push({payload:r,key:s,iv:c}),u)){let d=await g(f.payload,f.key,f.iv);if(d)return d}return""}async function v(e,t=""){if(/^https?:\/\//i.test(e))return e;let r=function e(t){let r=h(t);if(!r)return"";let n=p(r);return/^https?:\/\//i.test(n)?n:""}(e);return r||(e.startsWith("qAAB")&&t?await $(e,t):"")}function y(e){if(!e)return null;try{let t=new URL(e,location.origin).pathname,r=t.match(/[a-f0-9]{24,}/gi);if(r&&r.length)return r[r.length-1].toLowerCase();let n=(t.match(/[a-zA-Z0-9_-]{16,}/g)||[]).filter(e=>!/^tos-/i.test(e));if(n.length)return n[n.length-1].toLowerCase();return t.toLowerCase()}catch(i){return e.split("?")[0]}}function m(e){if(!e)return"";try{if(e.cover_url&&e.cover_url.url_list&&e.cover_url.url_list.length>0)return e.cover_url.url_list[0];let t=JSON.stringify(e),r=t.match(/"(https?:\/\/[^"]*(?:tos-[^"]+|image[^"]+|\.jpeg|\.jpg|\.png|\.webp)[^"]*)"/i);if(r)return r[1].replace(/\\u0026/g,"&").replace(/\\\//g,"/")}catch(n){}return""}window.duongThoClearAll=()=>(f("manual"),s=!0,0),window.duongThoClearAndRescan=window.duongThoClearAll,window.duongThoIsPaused=()=>s;let w=0;function _(e){if(e)return`DuongTho_${e}.mp4`;let t=Date.now();return t<=w&&(t=w+1),w=t,`DuongTho_${t}.mp4`}let b=["vid","video_id","item_id","uri","file_id","file_hash","md5","video_model_id"];function k(e){if(!e)return"";let t=Number(e.size||e.file_size||0);if(!t)return"";let r=[t,e.duration,e.bitrate||e.real_bitrate,e.vwidth||e.width,e.vheight||e.height].map(e=>null==e?"":String(e));return"fp:"+r.join("|")}async function x(e,t){if(s)return;let r;try{r=JSON.parse(e)}catch(n){return}try{let i=r?.video_info||r?.data?.video_info||r?.data||r,a=i?.video_list||i?.data?.video_list||r?.video_list;if(!a)return;let l=t||i?.vid||r?.data?.vid||r?.vid||"",o=function e(t,r=0){if(r>8||null==t||"object"!=typeof t)return"";for(let n of b){let i=t[n];if("string"==typeof i&&i.trim().length>=8)return n+":"+i.trim();if("number"==typeof i&&String(i).length>=8)return n+":"+i}for(let a of Object.values(t)){let l=e(a,r+1);if(l)return l}return""}(r),c=Object.values(a).filter(Boolean).map(e=>({entry:e,token:String(e.main_url||e.play_url||"").trim(),pixels:Number(e.vwidth||e.width||0)*Number(e.vheight||e.height||0),bitrate:Number(e.bitrate||e.real_bitrate||0)})).filter(e=>e.token).sort((e,t)=>t.pixels-e.pixels||t.bitrate-e.bitrate);if(!c.length)return;let f=function e(t,r=0){if(r>10||null==t)return"";if("string"==typeof t){let n=t.match(/(?:^|[?&])key_seed=([^&"'<>\\\s]+)/i);return n?decodeURIComponent(n[1]):(n=t.match(/["']key_seed["']\s*:\s*["']([^"']+)/i))?decodeURIComponent(n[1]):""}if("object"!=typeof t)return"";if("string"==typeof t.key_seed&&t.key_seed.trim())return t.key_seed.trim();for(let i of Object.values(t)){let a=e(i,r+1);if(a)return a}return""}(r);for(let d of c){let h=await v(d.token,f);if(!h)continue;let p=_(l),g=m(d.entry)||m(r),$={url:h,filename:p};if(l&&(window.zdolaVideoMap[l]=$),g){let w=y(g);w&&(window.zdolaVideoMap[w]=$)}let x=[o?"idn:"+o:"",g?"cov:"+y(g):"",k(d.entry)];u(h,p,g,l,x);return}}catch(C){}}let C=["channel","codec_type","logo_type","ts","_","timestamp","msToken","device_platform","aid"];function L(e){try{let t=new URL(e,location.origin),r=t.searchParams.get("vid")||t.searchParams.get("video_id")||t.searchParams.get("item_id");if(r)return"id:"+r;C.forEach(e=>t.searchParams.delete(e));let n=[...t.searchParams.entries()].sort((e,t)=>e[0].localeCompare(t[0]));return t.pathname+"?"+n.map(([e,t])=>e+"="+t).join("&")}catch(i){return e.split("#")[0]}}async function E(e){if(s)return;let r=e,a="",o=L(e);if(!t.has(o)){try{let c=new URL(e,location.origin);a=c.searchParams.get("vid")||c.searchParams.get("video_id")||"",c.searchParams.set("channel","no"),c.searchParams.set("codec_type","8"),c.searchParams.set("logo_type","unwatermarked"),r=c.toString()}catch(u){}if(!(a&&(n.has(a)||i.has(a)))){for(let f of(a&&i.add(a),t.add(o),[{credentials:"omit"},{credentials:"include"}]))try{let d=await fetch(r,f);if(!d.ok)continue;let h=l.length;if(await x(await d.text(),a||null),l.length>h)return}catch(p){}a&&n.has(a)||(t.delete(o),a&&i.delete(a))}}}function P(e,t){if(e)for(let r of[/fallback_api\\":\\"(.*?)\\"/g,/"fallback_api"\s*:\s*"([^"]+)"/g,/fallback_api&quot;:&quot;(.*?)&quot;/g]){let n;for(;null!==(n=r.exec(e));){let i=n[1];for(let a=0;a<3;a++)try{i=JSON.parse(`"${i.replace(/"/g,'\\"')}"`)}catch{break}let l=i.replace(/\\u0026/g,"&").replace(/&amp;/g,"&").replace(/\\\//g,"/").replace(/\\\\/g,"\\");/^https?:\/\//i.test(l)&&/get_play_info|play_info|\/video\//i.test(l)&&t.add(l)}}}function A(e){let t=new Set;return P(e,t),t.forEach(e=>E(e)),t.size}function z(e){if(s)return{found:0,fresh:0,paused:!0};let r=new Set;try{P(document.documentElement.innerHTML,r)}catch(n){}try{document.querySelectorAll("script").forEach(e=>{e.textContent&&e.textContent.length<6e6&&P(e.textContent,r)})}catch(i){}let a=0;return r.forEach(e=>{!t.has(L(e))&&a++,E(e)}),console.log(`[Đường Thọ Dola] scan(${e}): ${r.size} api refs, ${a} new`),{found:r.size,fresh:a}}function M(e,t){try{if("string"==typeof t){let r=t.match(/"vid"\s*:\s*"([^"]+)"/);if(r)return r[1]}let n=new URL(e,location.origin),i=n.searchParams.get("vid");if(i)return i}catch(a){}return null}window.duongThoManualScan=()=>(s=!1,z("manual")),window.duongThoGetVideos=()=>l;let S=["/chat/completion","/im/chain/single"],V=window.fetch;window.fetch=async function(...e){let t="string"==typeof e[0]?e[0]:e[0]?.url||"",r=null;t.includes("/video/get_play_info")&&(r=M(t,e[1]?.body))&&(window.zdolaLastActiveVid=r);let n=await V.apply(this,e);try{t.includes("/video/get_play_info")?n.clone().text().then(e=>x(e,r)).catch(()=>{}):S.some(e=>t.includes(e))&&n.clone().text().then(e=>A(e)).catch(()=>{})}catch(i){}return n};let q=window.XMLHttpRequest.prototype.open;window.XMLHttpRequest.prototype.open=function(e,t,...r){return this._url=t,q.apply(this,[e,t,...r])};let H=window.XMLHttpRequest.prototype.send;window.XMLHttpRequest.prototype.send=function(...e){let t=null;return this._url&&this._url.includes("/video/get_play_info")&&(t=M(this._url,e[0]))&&(window.zdolaLastActiveVid=t),this.addEventListener("load",function(){try{this._url&&this._url.includes("/video/get_play_info")?x(this.responseText,t):this._url&&S.some(e=>this._url.includes(e))&&A(this.responseText)}catch(e){}}),H.apply(this,e)};try{let R=window.WebSocket;window.WebSocket=function(...e){let t=new R(...e);return t.addEventListener("message",e=>{"string"==typeof e.data&&e.data.includes("fallback_api")&&A(e.data)}),t},window.WebSocket.prototype=R.prototype,Object.assign(window.WebSocket,R)}catch(j){}z("document_start"),document.addEventListener("DOMContentLoaded",()=>z("dom_ready")),window.addEventListener("load",()=>setTimeout(()=>z("window_load"),800)),[1500,3e3,6e3,1e4].forEach(e=>setTimeout(()=>z("boot+"+e),e));let W=null,T=()=>{W||(W=setTimeout(()=>{W=null,z("mutation")},900))};try{new MutationObserver(T).observe(document.documentElement,{childList:!0,subtree:!0})}catch(X){}window.addEventListener("scroll",T,!0),setInterval(()=>{location.href!==o?(o=location.href,f("chat_switch"),s=!1,[700,2e3,4500].forEach(e=>setTimeout(()=>z("chat_switch+"+e),e))):z("interval")},2500)}();
+
+
 // ============================================================================
-// 📥 DUONG THO - PARVEEN V7.5 1080P VIDEO EXTRACTOR & ANDROID GALLERY DOWNLOADER
+// 🎬 DUONG THO PARVEEN-GRADE 1080P MASTER VIDEO EXTRACTOR & DOWNLOAD ENGINE
 // ============================================================================
 (function() {
   'use strict';
-
-  // 1. Hide account & prompt floating buttons cleanly via DOM style (Never raw CSS)
-  try {
-    const st = document.createElement('style');
-    st.id = 'duongtho-clean-dock-style';
-    st.textContent = '#channa-accounts-dock-btn, #channa-accounts-quick-popover, #channa-dock-toggle-btn, #channa-prompt-dock { display: none !important; opacity: 0 !important; pointer-events: none !important; }';
-    (document.head || document.documentElement).appendChild(st);
-  } catch(e) {}
-
-  if (window.duongThoExtractorActive) return;
-  window.duongThoExtractorActive = true;
-  console.log('[DuongTho] Parveen v7.5 1080P Extractor Active...');
-
-  let visitedApis = new Set(),
-    visitedSignatures = new Set(),
-    visitedVids = new Set(),
-    visitedInFlight = new Set(),
-    extractedList = [];
-
-  window.zdolaVideoMap = window.zdolaVideoMap || {};
-  window.zdolaLastActiveVid = null;
-  window.duongThoVideos = extractedList;
-  window.__ctbExtractedVideos = extractedList;
-  window.duongThoChatUrl = location.href;
-
-  let currentChatUrl = location.href,
-    isPaused = false;
-
-  function notifyAndroidCount() {
+  
+  function notifyAndroidVideoCount() {
     try {
-      const count = extractedList.length;
-      if (window.AndroidDuongTho && typeof window.AndroidDuongTho.updateVideoCount === 'function') {
+      const vids = window.duongThoVideos || [];
+      const count = vids.length;
+      if (typeof window.AndroidDuongTho !== 'undefined' && typeof window.AndroidDuongTho.updateVideoCount === 'function') {
         window.AndroidDuongTho.updateVideoCount(count);
       }
-      if (window.DuongThoAndroid && typeof window.DuongThoAndroid.updateVideoCount === 'function') {
+      if (typeof window.DuongThoAndroid !== 'undefined' && typeof window.DuongThoAndroid.updateVideoCount === 'function') {
         window.DuongThoAndroid.updateVideoCount(count);
       }
       if (typeof updateExtensionBarCount === 'function') {
         updateExtensionBarCount(count);
       }
-    } catch(e) {}
+    } catch (e) {}
   }
+  
+  // Periodically notify Android bridge of extracted videos
+  setInterval(notifyAndroidVideoCount, 1500);
 
-  function syncStorage() {
-    window.duongThoVideos = extractedList;
-    window.__ctbExtractedVideos = extractedList;
-    window.duongThoChatUrl = currentChatUrl;
-    try {
-      localStorage.setItem('duongtho_extracted_videos', JSON.stringify(extractedList));
-    } catch(e) {}
-    notifyAndroidCount();
-    try {
-      attachIndividualVideoDownloadButtons();
-    } catch(e) {}
-  }
-
-  function addVideo(url, filename, coverUrl, vid, extra) {
-    if (!url || isPaused) return false;
-    let extraList = (extra || []).filter(Boolean);
-    if (extraList.some(k => visitedVids.has(k))) return false;
-    extraList.forEach(k => visitedVids.add(k));
-
-    let sig = (function extractSig(u) {
-      try {
-        let r = new URL(u, location.origin);
-        for (let n of ['video_id', 'file_id', 'item_id', 'vid']) {
-          let val = r.searchParams.get(n);
-          if (val && val.length >= 10) return (n + ':' + val).toLowerCase();
-        }
-        let p = r.pathname, l = p.match(/[a-f0-9]{24,}/gi);
-        if (l && l.length) return l[l.length - 1].toLowerCase();
-        let o = (p.match(/[a-zA-Z0-9_-]{16,}/g) || []).filter(e => !/^tos-/i.test(e));
-        if (o.length) return o[o.length - 1].toLowerCase();
-        return '';
-      } catch(s) { return ''; }
-    })(url);
-
-    let cleanUrl = url.split('?')[0];
-    if ((vid && visitedVids.has(vid)) || (sig && visitedSignatures.has(sig)) || (!vid && !sig && visitedSignatures.has(cleanUrl))) return false;
-    if (vid) visitedVids.add(vid);
-    if (sig) visitedSignatures.add(sig);
-    if (!vid && !sig) visitedSignatures.add(cleanUrl);
-
-    let finalName = filename.endsWith('.mp4') ? filename : (filename + '.mp4');
-    const entry = { id: vid || sig, vid: vid || '', sig: sig, url: url, filename: finalName, coverUrl: coverUrl || '' };
-    extractedList.push(entry);
-    syncStorage();
-    console.log('[DuongTho 1080P] + ' + finalName + ' (total: ' + extractedList.length + ')');
-    return true;
-  }
-
-  function padBase64(e) {
-    let t = (4 - e.length % 4) % 4;
-    return e + '='.repeat(t);
-  }
-
-  function decodeBase64Bytes(e) {
-    let t = String(e || '').trim(),
-      candidates = [t, t.replace(/[$@#]/g, m => ({ '$': '_', '@': '/', '#': '.' })[m]), t.replace(/[$@#]/g, m => ({ '$': '+', '@': '/', '#': '=' })[m])];
-    for (let c of candidates) {
-      try {
-        let clean = padBase64(c).replace(/-/g, '+').replace(/_/g, '/');
-        let bin = atob(clean);
-        let arr = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        return arr;
-      } catch(err) {}
-    }
-    return null;
-  }
-
-  function decodeUtf8(bytes) {
-    if (!bytes || !bytes.length) return '';
-    for (let b of bytes) if (b !== 9 && b !== 10 && b !== 13 && (b < 32 || b > 126)) return '';
-    return new TextDecoder().decode(bytes);
-  }
-
-  async function decryptAesCbc(payload, key, iv) {
-    if (!payload.length || payload.length % 16 !== 0) return '';
-    try {
-      let cryptoKey = await crypto.subtle.importKey('raw', key, 'AES-CBC', false, ['decrypt']);
-      let decrypted = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-CBC', iv: iv }, cryptoKey, payload));
-      let text = decodeUtf8(decrypted);
-      if (/^https?:\/\//i.test(text)) return text;
-      let unpad = (function(buf) {
-        if (!buf || !buf.length) return new Uint8Array();
-        let pad = buf[buf.length - 1];
-        if (pad < 1 || pad > 16 || pad > buf.length) return buf;
-        for (let i = buf.length - pad; i < buf.length; i++) if (buf[i] !== pad) return buf;
-        return buf.slice(0, buf.length - pad);
-      })(decrypted);
-      let unpadText = decodeUtf8(unpad);
-      return /^https?:\/\//i.test(unpadText) ? unpadText : '';
-    } catch(e) { return ''; }
-  }
-
-  async function decryptQaab(token, keySeed) {
-    let payloadBytes = decodeBase64Bytes(token);
-    let seedBytes = decodeBase64Bytes(keySeed);
-    if (!payloadBytes || !seedBytes) return '';
-
-    let shaSeed = await crypto.subtle.digest('SHA-512', seedBytes.slice(0, 32));
-    let salt = (function(hex) {
-      let arr = new Uint8Array(hex.length / 2);
-      for (let i = 0; i < arr.length; i++) arr[i] = parseInt(hex.slice(2 * i, 2 * i + 2), 16);
-      return arr;
-    })('4dd4c2e6b83162090e52b3c7a6733ba41cb2462b829ab58a196b39db57177524f49baf7f08e8d68d26a72e37c1a95a2f1f05a51892aef2949732b62a38aadd58');
-
-    let combined = new Uint8Array(shaSeed.byteLength + salt.length);
-    combined.set(new Uint8Array(shaSeed), 0);
-    combined.set(salt, shaSeed.byteLength);
-
-    let derived = new Uint8Array(await crypto.subtle.digest('SHA-512', combined));
-    let key1 = derived.slice(0, 16);
-    let iv1 = derived.slice(16, 32);
-
-    let attempts = [];
-    if (payloadBytes.length >= 4 && payloadBytes[0] === 168 && payloadBytes[1] === 0 && payloadBytes[2] === 1 && payloadBytes[3] === 0) {
-      attempts.push({ payload: payloadBytes.slice(4), key: key1, iv: iv1 });
-      attempts.push({ payload: payloadBytes.slice(4), key: iv1, iv: key1 });
-      if (payloadBytes.length > 36) {
-        attempts.push({ payload: payloadBytes.slice(36), key: key1, iv: payloadBytes.slice(20, 36) });
-        attempts.push({ payload: payloadBytes.slice(36), key: payloadBytes.slice(36), iv: key1 });
-      }
-    } else {
-      attempts.push({ payload: payloadBytes, key: key1, iv: iv1 });
-    }
-
-    for (let att of attempts) {
-      let dec = await decryptAesCbc(att.payload, att.key, att.iv);
-      if (dec) return dec;
-    }
-    return '';
-  }
-
-  async function resolveVideoUrl(token, keySeed = '') {
-    if (/^https?:\/\//i.test(token)) return token;
-    let direct = decodeUtf8(decodeBase64Bytes(token));
-    if (/^https?:\/\//i.test(direct)) return direct;
-    if (token.startsWith('qAAB') && keySeed) return await decryptQaab(token, keySeed);
-    return '';
-  }
-
-  let fileSeq = 0;
-  function makeFilename(vid) {
-    if (vid) return 'DuongTho_' + vid + '.mp4';
-    let now = Date.now();
-    if (now <= fileSeq) now = fileSeq + 1;
-    fileSeq = now;
-    return 'DuongTho_' + now + '.mp4';
-  }
-
-  async function processVideoInfoJson(jsonStr, vidHint) {
-    if (isPaused) return;
-    let data;
-    try { data = JSON.parse(jsonStr); } catch(e) { return; }
-    try {
-      let info = data?.video_info || data?.data?.video_info || data?.data || data;
-      let list = info?.video_list || info?.data?.video_list || data?.video_list;
-      if (!list) return;
-
-      let vid = vidHint || info?.vid || data?.data?.vid || data?.vid || '';
-      let entries = Object.values(list).filter(Boolean).map(e => ({
-        entry: e,
-        token: String(e.main_url || e.play_url || '').trim(),
-        pixels: Number(e.vwidth || e.width || 0) * Number(e.vheight || e.height || 0),
-        bitrate: Number(e.bitrate || e.real_bitrate || 0)
-      })).filter(e => e.token).sort((a, b) => b.pixels - a.pixels || b.bitrate - a.bitrate);
-
-      if (!entries.length) return;
-
-      let keySeed = (function findSeed(obj, depth = 0) {
-        if (depth > 10 || !obj) return '';
-        if (typeof obj === 'string') {
-          let m = obj.match(/(?:^|[?&])key_seed=([^&"'<>\\s]+)/i) || obj.match(/["']key_seed["']\s*:\s*["']([^"']+)/i);
-          return m ? decodeURIComponent(m[1]) : '';
-        }
-        if (typeof obj !== 'object') return '';
-        if (typeof obj.key_seed === 'string' && obj.key_seed.trim()) return obj.key_seed.trim();
-        for (let v of Object.values(obj)) {
-          let res = findSeed(v, depth + 1);
-          if (res) return res;
-        }
-        return '';
-      })(data);
-
-      for (let item of entries) {
-        let url = await resolveVideoUrl(item.token, keySeed);
-        if (!url) continue;
-
-        let filename = makeFilename(vid);
-        let cover = (data?.cover_url?.url_list && data.cover_url.url_list[0]) || '';
-        let mediaRecord = { url: url, filename: filename };
-        if (vid) window.zdolaVideoMap[vid] = mediaRecord;
-
-        addVideo(url, filename, cover, vid);
-        return;
-      }
-    } catch(err) {}
-  }
-
-  async function fetchPlayInfoUrl(url) {
-    if (isPaused) return;
-    let clean = url;
-    let vid = '';
-    try {
-      let u = new URL(url, location.origin);
-      vid = u.searchParams.get('vid') || u.searchParams.get('video_id') || '';
-      u.searchParams.set('channel', 'no');
-      u.searchParams.set('codec_type', '8');
-      u.searchParams.set('logo_type', 'unwatermarked');
-      clean = u.toString();
-    } catch(e) {}
-
-    if (vid && (visitedVids.has(vid) || visitedInFlight.has(vid))) return;
-    if (vid) visitedInFlight.add(vid);
-
-    for (let opt of [{ credentials: 'omit' }, { credentials: 'include' }]) {
-      try {
-        let resp = await fetch(clean, opt);
-        if (!resp.ok) continue;
-        let prevCount = extractedList.length;
-        await processVideoInfoJson(await resp.text(), vid || null);
-        if (extractedList.length > prevCount) return;
-      } catch(err) {}
-    }
-  }
-
-  function extractFallbackUrls(str, set) {
-    if (!str || typeof str !== 'string') return;
-    let patterns = [/fallback_api\\":\\"(.*?)\\"/g, /"fallback_api"\s*:\s*"([^"]+)"/g, /fallback_api&quot;:&quot;(.*?)&quot;/g];
-    for (let pat of patterns) {
-      let match;
-      while ((match = pat.exec(str)) !== null) {
-        let raw = match[1];
-        for (let i = 0; i < 3; i++) {
-          try { raw = JSON.parse('"' + raw.replace(/"/g, '\\"') + '"'); } catch(e) { break; }
-        }
-        let clean = raw.replace(/\\u0026/g, '&').replace(/&amp;/g, '&').replace(/\\\//g, '/').replace(/\\\\/g, '\\');
-        if (/^https?:\/\//i.test(clean) && /get_play_info|play_info|\/video\//i.test(clean)) {
-          set.add(clean);
-        }
-      }
-    }
-  }
-
-  function scanFallbackFromText(text) {
-    let set = new Set();
-    extractFallbackUrls(text, set);
-    set.forEach(u => fetchPlayInfoUrl(u));
-  }
-
-  function scanDom() {
-    if (isPaused) return;
-    let set = new Set();
-    try { extractFallbackUrls(document.documentElement.innerHTML, set); } catch(e) {}
-    try {
-      document.querySelectorAll('script').forEach(s => {
-        if (s.textContent && s.textContent.length < 6000000) extractFallbackUrls(s.textContent, set);
-      });
-    } catch(e) {}
-    set.forEach(u => fetchPlayInfoUrl(u));
-  }
-
-  // Hook Network Requests to capture fallback_api live
-  const origFetch = window.fetch;
-  window.fetch = async function(...args) {
-    let url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
-    let res = await origFetch.apply(this, args);
-    try {
-      if (url.includes('/video/get_play_info')) {
-        res.clone().text().then(t => processVideoInfoJson(t)).catch(() => {});
-      } else if (url.includes('/chat/completion') || url.includes('/im/chain/single')) {
-        res.clone().text().then(t => scanFallbackFromText(t)).catch(() => {});
-      }
-    } catch(e) {}
-    return res;
-  };
-
-  const origXhrSend = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.send = function(...args) {
-    this.addEventListener('load', function() {
-      try {
-        let u = this._url || '';
-        if (u.includes('/video/get_play_info')) {
-          processVideoInfoJson(this.responseText);
-        } else if (u.includes('/chat/completion') || u.includes('/im/chain/single')) {
-          scanFallbackFromText(this.responseText);
-        }
-      } catch(e) {}
-    });
-    return origXhrSend.apply(this, args);
-  };
-
-  // ========================================================================
-  // 🔘 GẮN NÚT TẢI 1080P TRỰC TIẾP LÊN TỪNG THẺ VIDEO TRÊN GIAO DIỆN CHAT DOLA
-  // ========================================================================
-  function getVideoCards() {
-    const rawCards = document.querySelectorAll('[class*="block-video"], [class*="block_video"], .image-box-grid-item-FTeESI, [class*="image-box-grid-item"]');
-    const cards = [];
-    rawCards.forEach((el) => {
-      const block = el.querySelector('[class*="block-video"]') || el;
-      if (!cards.includes(block)) cards.push(block);
-    });
-
-    const standalonePlayers = document.querySelectorAll('.video-player-wrapper, [class*="video-player-wrapper"], video');
-    standalonePlayers.forEach((el) => {
-      const card = el.closest('[class*="block-video"], [class*="block_video"], [class*="image-box-grid-item"]') || el.parentElement || el;
-      if (!cards.includes(card) && !card.closest('#duongtho-ref-dock-btn, #duongtho-ref-popover, #channa-prompt-dock, .channa-prompt-dock, #channa-accounts-dock-btn, #channa-accounts-quick-popover')) {
-        cards.push(card);
-      }
-    });
-    return cards;
-  }
-
-  function findDecryptedVideoForCard(card, cardIndex, totalCards) {
-    if (!extractedList.length) return null;
-
-    const videoEl = card.querySelector('video');
-    const imgEl = card.querySelector('img');
-
-    // 1. Khớp theo poster ảnh bìa
-    if (videoEl && videoEl.poster) {
-      for (let v of extractedList) {
-        if (v.coverUrl && (v.coverUrl === videoEl.poster || videoEl.poster.includes(v.coverUrl))) return v;
-      }
-    }
-    if (imgEl && imgEl.src) {
-      for (let v of extractedList) {
-        if (v.coverUrl && (v.coverUrl === imgEl.src || imgEl.src.includes(v.coverUrl))) return v;
-      }
-    }
-
-    // 2. Khớp theo src hoặc vid
-    const src = videoEl ? (videoEl.currentSrc || videoEl.src || '') : '';
-    if (src) {
-      for (let v of extractedList) {
-        if (v.url === src || (v.vid && src.includes(v.vid))) return v;
-      }
-    }
-
-    // 3. Khớp theo thứ tự thời gian hiển thị (từ trên xuống dưới)
-    if (cardIndex >= 0 && cardIndex < extractedList.length) {
-      return extractedList[cardIndex];
-    }
-
-    return extractedList[extractedList.length - 1];
-  }
-
-  function attachIndividualVideoDownloadButtons() {
-    try {
-      const cards = getVideoCards();
-      cards.forEach((card, index) => {
-        if (card.querySelector('.duongtho-single-dl-btn')) return;
-
-        const btn = document.createElement('button');
-        btn.className = 'duongtho-single-dl-btn';
-        btn.innerHTML = `
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          <span>1080P HD</span>
-        `;
-
-        btn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          e.preventDefault();
-
-          btn.style.opacity = '0.7';
-          btn.innerHTML = `
-            <svg class="dola-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
-              <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
-            </svg>
-            <span>Đang lấy link...</span>
-          `;
-
-          const matched = findDecryptedVideoForCard(card, index, cards.length);
-          if (matched && matched.url) {
-            const fname = matched.filename || ('DuongTho_1080P_' + (index + 1) + '_' + Date.now() + '.mp4');
-            try {
-              if (window.AndroidDuongTho && typeof window.AndroidDuongTho.downloadVideo === 'function') {
-                window.AndroidDuongTho.downloadVideo(matched.url, fname);
-              } else if (window.DuongThoAndroid && typeof window.DuongThoAndroid.downloadVideo === 'function') {
-                window.DuongThoAndroid.downloadVideo(matched.url, fname);
-              } else {
-                const a = document.createElement('a');
-                a.href = matched.url;
-                a.download = fname;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-              }
-
-              btn.innerHTML = `
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-                <span>Đã gửi tải!</span>
-              `;
-              setTimeout(() => {
-                btn.style.opacity = '1';
-                btn.innerHTML = `
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                  </svg>
-                  <span>1080P HD</span>
-                `;
-              }, 3000);
-            } catch(err) {
-              btn.innerHTML = '<span>❌ Lỗi tải</span>';
-              setTimeout(() => {
-                btn.style.opacity = '1';
-                btn.innerHTML = `
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                  </svg>
-                  <span>1080P HD</span>
-                `;
-              }, 2000);
-            }
-          } else {
-            scanDom();
-            btn.innerHTML = '<span>🔄 Đang quét...</span>';
-            setTimeout(() => {
-              btn.style.opacity = '1';
-              btn.innerHTML = `
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                <span>1080P HD</span>
-              `;
-            }, 2500);
-          }
-        });
-
-        card.style.position = 'relative';
-        const insertTarget = card.querySelector('video') || card.firstElementChild || card;
-        if (insertTarget && insertTarget.nextSibling) {
-          insertTarget.parentNode.insertBefore(btn, insertTarget.nextSibling);
-        } else {
-          card.appendChild(btn);
-        }
-      });
-    } catch(e) {}
-  }
-
+  // Implement Download All for Android APK
   window.duongThoDownloadAll = async function() {
-    if (!extractedList || !extractedList.length) {
-      if (window.__showChannaNotice) window.__showChannaNotice('⚠️ Chưa phát hiện video nào để tải!');
+    const vids = window.duongThoVideos || [];
+    if (!vids.length) {
+      if (typeof window.__showChannaNotice === 'function') {
+        window.__showChannaNotice('⚠️ Chưa tìm thấy video nào để tải!');
+      }
       return;
     }
-    let count = 0;
-    for (let i = 0; i < extractedList.length; i++) {
-      let v = extractedList[i];
+    
+    let downloaded = 0;
+    for (let i = 0; i < vids.length; i++) {
+      const v = vids[i];
       if (v && v.url) {
-        let fname = v.filename || ('DuongTho_1080P_' + (i + 1) + '.mp4');
+        const fname = v.filename || ('DuongTho_Video_' + (i + 1) + '.mp4');
         try {
-          if (window.AndroidDuongTho && typeof window.AndroidDuongTho.downloadVideo === 'function') {
+          if (typeof window.AndroidDuongTho !== 'undefined' && typeof window.AndroidDuongTho.downloadVideo === 'function') {
             window.AndroidDuongTho.downloadVideo(v.url, fname);
-            count++;
-          } else if (window.DuongThoAndroid && typeof window.DuongThoAndroid.downloadVideo === 'function') {
+            downloaded++;
+          } else if (typeof window.DuongThoAndroid !== 'undefined' && typeof window.DuongThoAndroid.downloadVideo === 'function') {
             window.DuongThoAndroid.downloadVideo(v.url, fname);
-            count++;
+            downloaded++;
+          } else if (typeof window.downloadVideoUniversal === 'function') {
+            await window.downloadVideoUniversal(v.url, fname);
+            downloaded++;
           }
-        } catch(e) {}
-        await new Promise(r => setTimeout(r, 600));
-      }
-    }
-    if (window.__showChannaNotice) window.__showChannaNotice('🚀 Đang tải ' + count + ' video vào Thư viện Android!');
-  };
-
-  window.duongThoRefreshUI = function() {
-    scanDom();
-    notifyAndroidCount();
-    attachIndividualVideoDownloadButtons();
-  };
-
-  window.duongThoForceRescan = async function() {
-    console.log('[DuongTho] Quét lại toàn bộ video...');
-    visitedInFlight.clear();
-    visitedSignatures.clear();
-    visitedVids.clear();
-    extractedList = [];
-    syncStorage();
-
-    // 1. Quét fallback_api trong HTML và script
-    scanDom();
-
-    // 2. Quét trực tiếp toàn bộ thẻ video trong DOM
-    try {
-      const vids = Array.from(document.querySelectorAll('video')).filter(v => v.id !== 'channa-ref-video');
-      vids.forEach((v, idx) => {
-        const src = v.currentSrc || v.src || v.querySelector('source')?.src || v.getAttribute('src');
-        if (src && (src.startsWith('http') || src.startsWith('blob:'))) {
-          const card = v.closest('[data-message-id], [class*="message"], [class*="bubble"], [class*="card"]') || v.parentElement;
-          const prompt = card ? (card.querySelector('p, span, [class*="text"]')?.textContent || '').trim().slice(0, 40) : '';
-          const fname = prompt ? `${prompt.replace(/[/\\?%*:|"<>]/g, '_')}.mp4` : makeFilename(null);
-          addVideo(src, fname, '', 'dom_' + idx);
+        } catch (e) {
+          console.error('[DuongTho Download Error]', e);
         }
-      });
-    } catch(e) {}
-
-    // 3. Cuộn nhẹ container để kích hoạt lazy loading
-    try {
-      const scroller = document.querySelector('[class*="chat-content"], [class*="scroll"], main, div[role="feed"]') || window;
-      if (scroller && scroller.scrollBy) {
-        scroller.scrollBy(0, 15);
-        setTimeout(() => scroller.scrollBy(0, -15), 100);
+        await new Promise(r => setTimeout(r, 700));
       }
-    } catch(e) {}
-
-    notifyAndroidCount();
-    attachIndividualVideoDownloadButtons();
-    if (window.__showChannaNotice) {
-      window.__showChannaNotice('🔄 Đã quét lại: Phát hiện ' + extractedList.length + ' video!');
+    }
+    
+    if (typeof window.__showChannaNotice === 'function') {
+      window.__showChannaNotice('⚡ Đang tải ' + downloaded + ' video vào Thư viện Android!');
     }
   };
 
-  window.duongThoResetCurrentChatVideos = function() {
-    extractedList = [];
-    window.duongThoVideos = [];
-    window.__ctbExtractedVideos = [];
-    try { localStorage.removeItem('duongtho_extracted_videos'); } catch(e) {}
-    notifyAndroidCount();
+  // Implement Refresh UI for Android APK
+  window.duongThoRefreshUI = function() {
+    if (typeof window.duongThoManualScan === 'function') {
+      window.duongThoManualScan();
+    }
+    notifyAndroidVideoCount();
+    if (typeof window.attachIndividualVideoDownloadButtons === 'function') {
+      window.attachIndividualVideoDownloadButtons();
+    }
   };
 
-  const SKILL_30S_DIRECTIVE = `# DuongTho-30s — Seedance 2.5 — 30s Hard Lock · Exact-Prompt & Dialogue · Zero-Confirmation Autopilot
+  // Implement Reset for Current Chat
+  window.duongThoResetCurrentChatVideos = function() {
+    if (typeof window.duongThoClearAll === 'function') {
+      window.duongThoClearAll();
+    }
+    window.duongThoVideos = [];
+    try {
+      localStorage.removeItem('duongtho_extracted_videos');
+    } catch (e) {}
+    notifyAndroidVideoCount();
+  };
+
+  // Hook into video card download buttons to use decrypted URLs from Parveen engine
+  const origFindMatching = window.findMatchingMediaForCard;
+  window.findMatchingMediaForCard = function(card, allCards) {
+    if (origFindMatching) {
+      const m = origFindMatching(card, allCards);
+      if (m && m.url) return m;
+    }
+    const vids = window.duongThoVideos || [];
+    if (vids.length > 0) {
+      const cardIndex = allCards ? allCards.indexOf(card) : 0;
+      if (cardIndex >= 0 && cardIndex < vids.length) {
+        return vids[cardIndex];
+      }
+      return vids[0];
+    }
+    return null;
+  };
+})();
+
+  // Khớp nối cho Smart Floating Toolbar trên APK Android
+  window.duongThoForceRescan = async function() {
+    if (typeof window.duongThoManualScan === 'function') {
+      window.duongThoManualScan();
+    }
+    if (typeof notifyAndroidVideoCount === 'function') {
+      notifyAndroidVideoCount();
+    }
+    if (typeof window.__showChannaNotice === 'function') {
+      const count = (window.duongThoVideos || []).length;
+      window.__showChannaNotice('🔄 Đã quét: Phát hiện ' + count + ' video 1080P!');
+    }
+  };
+
+const SKILL_30S_DIRECTIVE = `# DuongTho-30s — Seedance 2.5 — 30s Hard Lock · Exact-Prompt & Dialogue · Zero-Confirmation Autopilot
 
 ## Hard Lock (non-negotiable, overrides everything below)
 
